@@ -1,0 +1,26 @@
+.particle-canvas {
+  display: block;
+  margin: 0 auto;
+  cursor: pointer;
+  max-width: 100%;
+  height: auto;
+  filter: drop-shadow(0 0 20px rgba(102, 126, 234, 0.3));
+  transition: all 0.3s;
+}
+
+.particle-canvas:hover {
+  filter: drop-shadow(0 0 30px rgba(102, 126, 234, 0.5));
+  transform: scale(1.02);
+}
+
+.particle-canvas:active {
+  transform: scale(0.98);
+}
+
+.particle-canvas-nav {
+  filter: drop-shadow(0 0 10px rgba(102, 126, 234, 0.2));
+}
+
+.particle-canvas-nav:hover {
+  filter: drop-shadow(0 0 15px rgba(102, 126, 234, 0.4));
+}
