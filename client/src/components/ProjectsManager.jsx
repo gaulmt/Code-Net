@@ -8,6 +8,8 @@ function ProjectsManager({ userId, onClose, onJoinProject }) {
   const [loading, setLoading] = useState(true);
   const [shareProjectCode, setShareProjectCode] = useState('');
   const [copied, setCopied] = useState(false);
+  const [deleteConfirm, setDeleteConfirm] = useState(null); // { projectCode, verificationCode }
+  const [verificationInput, setVerificationInput] = useState('');
 
   useEffect(() => {
     loadProjects();
@@ -27,14 +29,30 @@ function ProjectsManager({ userId, onClose, onJoinProject }) {
   };
 
   const handleDelete = async (projectCode) => {
-    if (window.confirm('Bạn có chắc muốn xóa project này?')) {
+    // Generate random 6-digit code
+    const verificationCode = Math.floor(100000 + Math.random() * 900000).toString();
+    setDeleteConfirm({ projectCode, verificationCode });
+    setVerificationInput('');
+  };
+
+  const confirmDelete = async () => {
+    if (verificationInput === deleteConfirm.verificationCode) {
       try {
-        await deleteUserProject(userId, projectCode);
-        setProjects(projects.filter(p => p.code !== projectCode));
+        await deleteUserProject(userId, deleteConfirm.projectCode);
+        setProjects(projects.filter(p => p.code !== deleteConfirm.projectCode));
+        setDeleteConfirm(null);
+        setVerificationInput('');
       } catch (error) {
         alert('Lỗi khi xóa project: ' + error.message);
       }
+    } else {
+      alert('Mã xác nhận không đúng!');
     }
+  };
+
+  const cancelDelete = () => {
+    setDeleteConfirm(null);
+    setVerificationInput('');
   };
 
   const handleShare = (projectCode) => {
@@ -47,8 +65,9 @@ function ProjectsManager({ userId, onClose, onJoinProject }) {
     }, 2000);
   };
 
-  const handleJoin = (projectCode) => {
-    onJoinProject(projectCode);
+  const handleJoin = (project) => {
+    // Pass project code, role, and name to parent
+    onJoinProject(project.code, project.role || 'member', project.name);
     onClose();
   };
 
@@ -104,7 +123,7 @@ function ProjectsManager({ userId, onClose, onJoinProject }) {
                   <div className="project-actions">
                     <button
                       className="btn-action btn-join"
-                      onClick={() => handleJoin(project.code)}
+                      onClick={() => handleJoin(project)}
                       title="Mở project"
                     >
                       Mở
@@ -134,6 +153,52 @@ function ProjectsManager({ userId, onClose, onJoinProject }) {
           )}
         </div>
       </div>
+
+      {/* Delete Confirmation Modal */}
+      {deleteConfirm && (
+        <div className="modal-overlay" onClick={cancelDelete}>
+          <div className="delete-confirm-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h3>⚠️ Xác nhận xóa project</h3>
+              <button className="close-btn" onClick={cancelDelete}>
+                <FiX />
+              </button>
+            </div>
+            <div className="modal-body">
+              <p className="warning-text">
+                Hành động này không thể hoàn tác! Tất cả dữ liệu sẽ bị xóa vĩnh viễn.
+              </p>
+              <p className="instruction-text">
+                Nhập mã xác nhận để tiếp tục:
+              </p>
+              <div className="verification-code">
+                {deleteConfirm.verificationCode}
+              </div>
+              <input
+                type="text"
+                className="verification-input"
+                placeholder="Nhập mã xác nhận..."
+                value={verificationInput}
+                onChange={(e) => setVerificationInput(e.target.value)}
+                onKeyPress={(e) => e.key === 'Enter' && confirmDelete()}
+                autoFocus
+              />
+            </div>
+            <div className="modal-footer">
+              <button className="btn-cancel" onClick={cancelDelete}>
+                Hủy
+              </button>
+              <button 
+                className="btn-confirm-delete" 
+                onClick={confirmDelete}
+                disabled={!verificationInput}
+              >
+                Xóa Project
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

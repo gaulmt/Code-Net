@@ -1,10 +1,12 @@
 import { useState, useEffect, useRef } from 'react';
 import MonacoEditor from '@monaco-editor/react';
-import { getFileContent, updateContent, updateCursor } from '../socket';
-import CodeRunner from './CodeRunner';
+import { getFileContent, updateContent, updateCursor, getFiles } from '../socket';
+import InteractiveTerminal from './InteractiveTerminal';
+import DownloadModal from './DownloadModal';
+import { FiSave, FiDownload, FiSun, FiMoon } from 'react-icons/fi';
 import './Editor.css';
 
-function Editor({ documentId, user, users, currentFile }) {
+function Editor({ documentId, projectName, user, users, currentFile, theme: appTheme, onThemeChange }) {
   const [content, setContent] = useState('');
   const [language, setLanguage] = useState('javascript');
   const [cursors, setCursors] = useState({});
@@ -13,9 +15,18 @@ function Editor({ documentId, user, users, currentFile }) {
   const [outputHeight, setOutputHeight] = useState(200);
   const [loading, setLoading] = useState(true);
   const [runTrigger, setRunTrigger] = useState(0);
+  const [codeToRun, setCodeToRun] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [showDownloadModal, setShowDownloadModal] = useState(false);
+  const [allFiles, setAllFiles] = useState([]);
   const editorRef = useRef(null);
   const decorationsRef = useRef([]);
   const isRemoteChange = useRef(false);
+  const updateTimeoutRef = useRef(null);
+  const isComposingRef = useRef(false);
+  
+  // Use theme from App or fallback to local
+  const theme = appTheme || localStorage.getItem('editorTheme') || 'vs-dark';
 
   useEffect(() => {
     if (!documentId || !currentFile) return;
@@ -30,7 +41,26 @@ function Editor({ documentId, user, users, currentFile }) {
       }
       setLoading(false);
     });
+    
+    // Save last opened file
+    localStorage.setItem(`lastFile_${documentId}`, currentFile);
+    
+    // Cleanup timeout on unmount or file change
+    return () => {
+      if (updateTimeoutRef.current) {
+        clearTimeout(updateTimeoutRef.current);
+      }
+    };
   }, [documentId, currentFile]);
+
+  // Load all files for download modal
+  useEffect(() => {
+    if (!documentId) return;
+    
+    getFiles(documentId, (files) => {
+      setAllFiles(files);
+    });
+  }, [documentId]);
 
   useEffect(() => {
     if (!editorRef.current || !showCursors) {
@@ -69,13 +99,41 @@ function Editor({ documentId, user, users, currentFile }) {
     }
     
     setContent(value);
-    if (documentId && currentFile) {
-      updateContent(documentId, currentFile, value);
+    
+    // Debounce update to Firebase - wait 300ms after last keystroke
+    if (updateTimeoutRef.current) {
+      clearTimeout(updateTimeoutRef.current);
+    }
+    
+    // Don't sync while composing Vietnamese characters
+    if (!isComposingRef.current && documentId && currentFile) {
+      updateTimeoutRef.current = setTimeout(() => {
+        updateContent(documentId, currentFile, value);
+      }, 300);
     }
   };
 
   const handleEditorMount = (editor) => {
     editorRef.current = editor;
+    
+    // Handle Vietnamese input composition
+    const domNode = editor.getDomNode();
+    if (domNode) {
+      const textArea = domNode.querySelector('textarea');
+      if (textArea) {
+        textArea.addEventListener('compositionstart', () => {
+          isComposingRef.current = true;
+        });
+        
+        textArea.addEventListener('compositionend', () => {
+          isComposingRef.current = false;
+          // Sync after composition ends
+          if (documentId && currentFile && content) {
+            updateContent(documentId, currentFile, content);
+          }
+        });
+      }
+    }
     
     editor.onDidChangeCursorPosition((e) => {
       if (documentId && user) {
@@ -106,8 +164,107 @@ function Editor({ documentId, user, users, currentFile }) {
   };
 
   const handleRun = () => {
+    // Get latest content from editor
+    if (editorRef.current) {
+      const latestContent = editorRef.current.getValue();
+      setContent(latestContent);
+      setCodeToRun(latestContent); // Set code to run
+    }
     setShowOutput(true);
     setRunTrigger(prev => prev + 1);
+  };
+
+  const handleSaveToCloud = async () => {
+    if (!documentId || !currentFile) return;
+    
+    setSaving(true);
+    try {
+      // Get latest content from editor
+      const latestContent = editorRef.current ? editorRef.current.getValue() : content;
+      
+      // Save to Firebase
+      await updateContent(documentId, currentFile, latestContent);
+      setContent(latestContent);
+      
+      // Show success feedback
+      const btn = document.querySelector('.save-cloud-btn');
+      if (btn) {
+        btn.classList.add('saved');
+        setTimeout(() => btn.classList.remove('saved'), 2000);
+      }
+    } catch (error) {
+      alert('Lỗi khi lưu: ' + error.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleDownload = () => {
+    setShowDownloadModal(true);
+  };
+
+  const handleDownloadFiles = async (selectedFiles) => {
+    for (const fileName of selectedFiles) {
+      try {
+        // Get file content from Firebase
+        await new Promise((resolve) => {
+          getFileContent(documentId, fileName, (data) => {
+            const fileContent = data?.text || '';
+            
+            // Download file
+            const blob = new Blob([fileContent], { type: 'text/plain' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = fileName;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+            
+            resolve();
+          });
+        });
+        
+        // Small delay between downloads
+        await new Promise(resolve => setTimeout(resolve, 100));
+      } catch (error) {
+        console.error(`Error downloading ${fileName}:`, error);
+      }
+    }
+  };
+
+  const handleThemeChange = () => {
+    const themes = ['vs-dark', 'vs-light', 'hc-black'];
+    const currentIndex = themes.indexOf(theme);
+    const nextTheme = themes[(currentIndex + 1) % themes.length];
+    
+    // Add transition effect
+    const editorContainer = document.querySelector('.editor-content');
+    if (editorContainer) {
+      editorContainer.classList.add('theme-transitioning');
+      setTimeout(() => {
+        editorContainer.classList.remove('theme-transitioning');
+      }, 300);
+    }
+    
+    // Update theme in App
+    if (onThemeChange) {
+      onThemeChange(nextTheme);
+      localStorage.setItem('appTheme', nextTheme);
+    }
+  };
+
+  const getThemeIcon = () => {
+    if (theme === 'vs-light') return <FiSun />;
+    if (theme === 'hc-black') return '🌓';
+    return <FiMoon />;
+  };
+
+  const getThemeName = () => {
+    if (theme === 'vs-light') return 'Light';
+    if (theme === 'hc-black') return 'High Contrast';
+    return 'Dark';
   };
 
   const handleResizeOutput = (e) => {
@@ -183,11 +340,38 @@ function Editor({ documentId, user, users, currentFile }) {
   return (
     <div className="editor-container">
       <div className="editor-header">
-        <span className="current-file">{currentFile}</span>
+        <div className="editor-header-left">
+          {projectName && (
+            <>
+              <span className="project-name">{projectName}</span>
+              <span className="separator">/</span>
+            </>
+          )}
+          <span className="current-file">{currentFile}</span>
+        </div>
         <div className="editor-controls">
           {!user?.permissions?.includes('write') && (
             <span className="read-only-badge">🔒 Chỉ đọc</span>
           )}
+          
+          {user?.permissions?.includes('write') && (
+            <button 
+              className="download-btn"
+              onClick={handleDownload}
+              title="Tải về máy"
+            >
+              <FiDownload /> Download
+            </button>
+          )}
+          
+          <button 
+            className="theme-btn"
+            onClick={handleThemeChange}
+            title={`Theme: ${getThemeName()}`}
+          >
+            {getThemeIcon()} {getThemeName()}
+          </button>
+          
           <label className="cursor-toggle">
             <input 
               type="checkbox" 
@@ -196,6 +380,7 @@ function Editor({ documentId, user, users, currentFile }) {
             />
             Hiện cursor
           </label>
+          
           {user?.permissions?.includes('write') && (
             <button 
               className="run-code-btn"
@@ -211,7 +396,7 @@ function Editor({ documentId, user, users, currentFile }) {
         <MonacoEditor
           height="100%"
           language={language}
-          theme="vs-dark"
+          theme={theme}
           value={content}
           onChange={handleEditorChange}
           onMount={handleEditorMount}
@@ -222,15 +407,40 @@ function Editor({ documentId, user, users, currentFile }) {
             scrollBeyondLastLine: false,
             cursorBlinking: 'smooth',
             cursorSmoothCaretAnimation: true,
-            readOnly: !user?.permissions?.includes('write')
+            readOnly: !user?.permissions?.includes('write'),
+            // Fix Vietnamese input issue
+            quickSuggestions: false,
+            acceptSuggestionOnCommitCharacter: false,
+            acceptSuggestionOnEnter: 'off',
+            tabCompletion: 'off',
+            wordBasedSuggestions: false,
+            // Improve composition (Vietnamese typing)
+            renderWhitespace: 'selection',
+            renderControlCharacters: false
           }}
         />
       </div>
       {showOutput && (
         <div className="output-container" style={{ height: `${outputHeight}px` }}>
           <div className="output-resize-handle" onMouseDown={handleResizeOutput} />
-          <CodeRunner code={content} language={language} runTrigger={runTrigger} onClose={() => setShowOutput(false)} />
+          <InteractiveTerminal 
+            code={codeToRun} 
+            language={language} 
+            runTrigger={runTrigger} 
+            onClose={() => setShowOutput(false)}
+            projectName={projectName}
+            documentId={documentId}
+          />
         </div>
+      )}
+      
+      {showDownloadModal && (
+        <DownloadModal
+          files={allFiles}
+          currentFile={currentFile}
+          onClose={() => setShowDownloadModal(false)}
+          onDownload={handleDownloadFiles}
+        />
       )}
     </div>
   );

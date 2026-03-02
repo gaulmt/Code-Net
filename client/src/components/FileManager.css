@@ -5,7 +5,6 @@
   border-right: 1px solid #3e3e42;
   display: flex;
   flex-direction: column;
-  overflow: hidden;
 }
 
 .file-header {
@@ -27,6 +26,40 @@
 .file-actions {
   display: flex;
   gap: 0.5rem;
+}
+
+.upload-label {
+  background: transparent;
+  border: none;
+  color: #d4d4d4;
+  cursor: pointer;
+  padding: 0.5rem;
+  border-radius: 4px;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.upload-label:hover {
+  background: #2d2d30;
+}
+
+.create-btn {
+  background: transparent;
+  border: none;
+  color: #d4d4d4;
+  cursor: pointer;
+  padding: 0.5rem;
+  border-radius: 4px;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.create-btn:hover {
+  background: #2d2d30;
 }
 
 .file-actions button,
@@ -87,6 +120,13 @@
   flex: 1;
   overflow-y: auto;
   padding: 0.5rem;
+  transition: background 0.2s;
+}
+
+.file-list.accepting-drop {
+  background: rgba(102, 126, 234, 0.1);
+  border: 2px dashed #667eea;
+  border-radius: 4px;
 }
 
 .empty-state {
@@ -144,8 +184,59 @@
   white-space: nowrap;
 }
 
-.delete-btn {
+/* Rename input */
+.rename-input {
+  flex: 1;
+  background: #3c3c3c;
+  border: 1px solid #667eea;
+  color: #fff;
+  padding: 0.25rem 0.5rem;
+  border-radius: 3px;
+  font-size: 0.85rem;
+  outline: none;
+}
+
+.rename-input:focus {
+  border-color: #4ECDC4;
+  box-shadow: 0 0 0 2px rgba(78, 205, 196, 0.2);
+}
+
+.file-item.renaming {
+  background: #2d2d30;
+}
+
+/* File item actions container (rename, delete buttons on files) */
+.file-item-actions {
+  display: flex;
+  gap: 0.25rem;
   opacity: 0;
+  transition: opacity 0.2s;
+}
+
+.file-item:hover .file-item-actions {
+  opacity: 1;
+}
+
+/* Rename button */
+.rename-btn {
+  background: transparent;
+  border: none;
+  color: #4ECDC4;
+  cursor: pointer;
+  padding: 0.25rem;
+  display: flex;
+  align-items: center;
+  transition: all 0.2s;
+  border-radius: 3px;
+}
+
+.rename-btn:hover {
+  background: #2d2d30;
+  color: #5fd9cf;
+}
+
+/* Delete button */
+.delete-btn {
   background: transparent;
   border: none;
   color: #f48771;
@@ -153,13 +244,295 @@
   padding: 0.25rem;
   display: flex;
   align-items: center;
-  transition: opacity 0.2s;
-}
-
-.file-item:hover .delete-btn {
-  opacity: 1;
+  transition: all 0.2s;
+  border-radius: 3px;
 }
 
 .delete-btn:hover {
+  background: #2d2d30;
   color: #ff6b6b;
+}
+
+
+/* Create form inline */
+.create-form-inline {
+  background: #1e1e1e;
+  border-bottom: 1px solid #3e3e42;
+}
+
+.form-tabs {
+  display: flex;
+  border-bottom: 1px solid #3e3e42;
+}
+
+.tab-btn {
+  flex: 1;
+  padding: 0.75rem;
+  background: transparent;
+  border: none;
+  color: #888;
+  cursor: pointer;
+  font-size: 0.85rem;
+  font-weight: 500;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  transition: all 0.2s;
+  border-bottom: 2px solid transparent;
+}
+
+.tab-btn:hover {
+  color: #d4d4d4;
+  background: #2d2d30;
+}
+
+.tab-btn.active {
+  color: #667eea;
+  border-bottom-color: #667eea;
+  background: #252526;
+}
+
+.form-content {
+  padding: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.form-select,
+.form-input {
+  width: 100%;
+  padding: 0.6rem;
+  background: #252526;
+  border: 1px solid #3e3e42;
+  border-radius: 4px;
+  color: #d4d4d4;
+  font-size: 0.85rem;
+  transition: border-color 0.2s;
+}
+
+.form-select:focus,
+.form-input:focus {
+  outline: none;
+  border-color: #667eea;
+  box-shadow: 0 0 0 2px rgba(102, 126, 234, 0.1);
+}
+
+.form-input::placeholder {
+  color: #666;
+}
+
+.form-actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.btn-create,
+.btn-cancel {
+  flex: 1;
+  padding: 0.6rem;
+  border: none;
+  border-radius: 4px;
+  font-size: 0.85rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.btn-create {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+}
+
+.btn-create:hover {
+  box-shadow: 0 2px 8px rgba(102, 126, 234, 0.4);
+  transform: translateY(-1px);
+}
+
+.btn-cancel {
+  background: #2d2d30;
+  color: #d4d4d4;
+}
+
+.btn-cancel:hover {
+  background: #3e3e42;
+}
+
+.create-btn.active {
+  background: #2d2d30;
+  color: #667eea;
+}
+  padding: 0.5rem;
+  background: #2d2d30;
+  border: 1px solid #3e3e42;
+  border-radius: 4px;
+  color: #d4d4d4;
+  font-size: 0.85rem;
+  cursor: pointer;
+  margin-right: 0.5rem;
+}
+
+.language-select:focus {
+  outline: none;
+  border-color: #667eea;
+}
+
+/* Folder styles */
+.folder-container {
+  margin: 0.25rem 0;
+}
+
+.folder-item {
+  display: flex;
+  align-items: center;
+  padding: 0.5rem;
+  cursor: pointer;
+  border-radius: 4px;
+  transition: background 0.2s;
+  gap: 0.5rem;
+  position: relative;
+}
+
+.folder-item:hover {
+  background: #2d2d30;
+}
+
+.folder-icon {
+  color: #667eea;
+  font-size: 1rem;
+}
+
+.folder-name {
+  flex: 1;
+  font-size: 0.9rem;
+  color: #d4d4d4;
+  font-weight: 500;
+}
+
+.folder-actions {
+  display: flex;
+  gap: 0.25rem;
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+
+.folder-item:hover .folder-actions {
+  opacity: 1;
+}
+
+.add-file-btn {
+  background: transparent;
+  border: none;
+  color: #4ECDC4;
+  cursor: pointer;
+  padding: 0.25rem;
+  display: flex;
+  align-items: center;
+  border-radius: 3px;
+  transition: all 0.2s;
+}
+
+.add-file-btn:hover {
+  background: #3e3e42;
+  color: #5fd9cf;
+}
+
+.folder-indicator {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem;
+  background: #2d2d30;
+  border-radius: 4px;
+  color: #d4d4d4;
+  font-size: 0.85rem;
+  border: 1px solid #3e3e42;
+}
+
+.folder-indicator svg {
+  color: #667eea;
+}
+
+.folder-indicator strong {
+  color: #667eea;
+}
+
+.folder-contents {
+  margin-left: 1.5rem;
+  border-left: 1px solid #3e3e42;
+  padding-left: 0.5rem;
+}
+
+.file-item.nested {
+  padding-left: 0.5rem;
+}
+
+.file-item.nested .file-icon {
+  font-size: 0.85rem;
+}
+
+
+.empty-folder {
+  padding: 0.5rem 1rem;
+  color: #666;
+  font-size: 0.8rem;
+  font-style: italic;
+}
+
+/* Drag & Drop styles */
+.file-item.dragging {
+  opacity: 0.4;
+  cursor: grabbing;
+}
+
+.file-item[draggable="true"] {
+  cursor: grab;
+}
+
+.file-item.drop-target-file {
+  border-top: 2px solid #667eea;
+  margin-top: 2px;
+}
+
+.folder-item.drop-target,
+.empty-folder.drop-target,
+.root-files.drop-target,
+.root-drop-zone.drop-target {
+  background: rgba(102, 126, 234, 0.2);
+  border: 2px dashed #667eea;
+  border-radius: 4px;
+}
+
+.root-drop-zone {
+  padding: 1.5rem;
+  margin: 0.5rem;
+  border: 2px dashed #667eea;
+  border-radius: 6px;
+  text-align: center;
+  color: #667eea;
+  font-size: 0.9rem;
+  font-weight: 500;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(102, 126, 234, 0.05);
+}
+
+.root-drop-zone.drop-target {
+  background: rgba(102, 126, 234, 0.2);
+  border-color: #764ba2;
+  color: #764ba2;
+  transform: scale(1.02);
+}
+
+.root-files {
+  transition: all 0.2s;
+  border-radius: 4px;
+}
+
+.empty-folder {
+  transition: all 0.2s;
+  cursor: default;
 }

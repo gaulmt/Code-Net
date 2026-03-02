@@ -5,6 +5,8 @@ import UserPanel from './components/UserPanel';
 import FileManager from './components/FileManager';
 import Landing from './components/Landing';
 import Profile from './components/Profile';
+import Toast from './components/Toast';
+import ConfirmDialog from './components/ConfirmDialog';
 import { joinDocument } from './socket';
 import { 
   auth, 
@@ -17,13 +19,19 @@ import {
   checkUsernameAvailable,
   saveUserProfile,
   getUserProfile,
-  updateUserAvatar
+  updateUserAvatar,
+  checkProjectExists,
+  createProjectMetadata,
+  updateProjectActivity,
+  saveProjectMember,
+  getUserRoleInProject
 } from './firebase';
 import { onAuthStateChanged } from 'firebase/auth';
 import './App.css';
 
 function App() {
   const [documentId, setDocumentId] = useState('');
+  const [projectName, setProjectName] = useState('');
   const [user, setUser] = useState(null);
   const [authUser, setAuthUser] = useState(null);
   const [userProfile, setUserProfile] = useState(null);
@@ -36,6 +44,18 @@ function App() {
   const [userPanelWidth, setUserPanelWidth] = useState(240);
   const [fileManagerWidth, setFileManagerWidth] = useState(250);
   const [sidebarWidth, setSidebarWidth] = useState(300);
+  const [theme, setTheme] = useState(localStorage.getItem('appTheme') || 'dark');
+  const [toasts, setToasts] = useState([]);
+  const [confirmDialog, setConfirmDialog] = useState(null); // { message, onConfirm }
+
+  const showToast = (message, type = 'info') => {
+    const id = Date.now();
+    setToasts(prev => [...prev, { id, message, type }]);
+  };
+
+  const removeToast = (id) => {
+    setToasts(prev => prev.filter(t => t.id !== id));
+  };
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
@@ -63,18 +83,18 @@ function App() {
   const handleLogin = async (email, password) => {
     try {
       await signInUser(email, password);
-      alert('Đăng nhập thành công!');
+      showToast('Đăng nhập thành công!', 'success');
     } catch (error) {
-      alert('Lỗi đăng nhập: ' + error.message);
+      showToast('Lỗi đăng nhập: ' + error.message, 'error');
     }
   };
 
   const handleSignup = async (username, email, password) => {
     try {
       await signUpUser(email, password, username);
-      alert('Đăng ký thành công!');
+      showToast('Đăng ký thành công!', 'success');
     } catch (error) {
-      alert('Lỗi đăng ký: ' + error.message);
+      showToast('Lỗi đăng ký: ' + error.message, 'error');
     }
   };
 
@@ -85,11 +105,11 @@ function App() {
       const profile = await getUserProfile(user.uid);
       if (profile) {
         setUserProfile(profile);
-        alert(`Chào mừng trở lại ${profile.username}!`);
+        showToast(`Chào mừng trở lại ${profile.username}!`, 'success');
       }
       // If no profile, Landing will show username setup
     } catch (error) {
-      alert('Lỗi đăng nhập Google: ' + error.message);
+      showToast('Lỗi đăng nhập Google: ' + error.message, 'error');
     }
   };
 
@@ -98,7 +118,7 @@ function App() {
       // Check if username is available
       const isAvailable = await checkUsernameAvailable(username);
       if (!isAvailable) {
-        alert('Tên người dùng đã tồn tại. Vui lòng chọn tên khác.');
+        showToast('Tên người dùng đã tồn tại. Vui lòng chọn tên khác.', 'warning');
         return;
       }
 
@@ -109,9 +129,9 @@ function App() {
       const profile = await getUserProfile(authUser.uid);
       setUserProfile(profile);
       
-      alert(`Chào mừng ${username}!`);
+      showToast(`Chào mừng ${username}!`, 'success');
     } catch (error) {
-      alert('Lỗi: ' + error.message);
+      showToast('Lỗi: ' + error.message, 'error');
     }
   };
 
@@ -124,9 +144,9 @@ function App() {
       setUserProfile(profile);
       setShowProfile(false);
       
-      alert('Cập nhật avatar thành công!');
+      showToast('Cập nhật avatar thành công!', 'success');
     } catch (error) {
-      alert('Lỗi: ' + error.message);
+      showToast('Lỗi: ' + error.message, 'error');
     }
   };
 
@@ -136,21 +156,29 @@ function App() {
       setAuthUser(null);
       setUserProfile(null);
       setShowLanding(true);
-      alert('Đăng xuất thành công!');
+      showToast('Đăng xuất thành công!', 'success');
     } catch (error) {
-      alert('Lỗi đăng xuất: ' + error.message);
+      showToast('Lỗi đăng xuất: ' + error.message, 'error');
     }
   };
 
   const handleCreateProject = async (username, projectId, projectName) => {
+    // Require login to create project
+    if (!authUser || !userProfile) {
+      showToast('Bạn cần đăng nhập để tạo project!', 'warning');
+      return;
+    }
+
     const colors = ['#FF6B6B', '#4ECDC4', '#45B7D1', '#FFA07A', '#98D8C8'];
     const shortCode = projectId || `ROOM_${Math.random().toString(36).substr(2, 6).toUpperCase()}`;
     
     // Check if user is admin
-    const isAdmin = userProfile && userProfile.username === 'gaulmt';
+    const isAdmin = authUser && userProfile && userProfile.username === 'gaulmt';
+    
+    const userId = authUser.uid;
     
     const newUser = {
-      id: `user_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+      id: userId,
       name: username,
       color: colors[Math.floor(Math.random() * colors.length)],
       role: 'leader',
@@ -160,22 +188,38 @@ function App() {
     
     setUser(newUser);
     setDocumentId(shortCode);
+    setProjectName(projectName || `Project ${shortCode}`);
     setShowLanding(false);
     
-    // Save project to user's profile if logged in
-    if (authUser) {
-      try {
-        await saveUserProject(authUser.uid, shortCode, projectName || `Project ${shortCode}`);
-        console.log('Project saved to user profile');
-      } catch (error) {
-        console.error('Error saving project:', error);
-      }
+    // Create project metadata and save to user profile
+    console.log('📝 Creating project...', { shortCode, userId, username, projectName });
+    
+    try {
+      // Save all project data
+      await createProjectMetadata(shortCode, projectName || `Project ${shortCode}`, userId, username);
+      console.log('✓ Project metadata created');
+      
+      await saveUserProject(userId, shortCode, projectName || `Project ${shortCode}`, 'leader');
+      console.log('✓ Project saved to user profile');
+      
+      await saveProjectMember(shortCode, userId, username, 'leader');
+      console.log('✓ Project member saved');
+      
+      console.log('✅ Project created and saved successfully!');
+      showToast('Project đã được tạo và lưu thành công!', 'success');
+    } catch (error) {
+      console.error('❌ Error saving project:', error);
+      console.error('Error details:', {
+        message: error.message,
+        code: error.code,
+        stack: error.stack
+      });
+      showToast('Lỗi khi lưu project: ' + error.message, 'error');
     }
     
     joinDocument(shortCode, newUser, {
       onUsersUpdate: (userList) => {
         setUsers(userList);
-        // Update current user if role changed
         const updatedCurrentUser = userList.find(u => u.id === newUser.id);
         if (updatedCurrentUser) {
           setUser(updatedCurrentUser);
@@ -184,24 +228,99 @@ function App() {
     });
   };
 
-  const handleJoinProject = (username, projectId) => {
+  const handleJoinProject = async (username, projectId, savedRole = null, skipCheck = false, savedProjectName = null) => {
+    // Require login to join project
+    if (!authUser || !userProfile) {
+      showToast('Bạn cần đăng nhập để tham gia project!', 'warning');
+      return;
+    }
+
+    console.log('🔍 Joining project...', { projectId, skipCheck, savedRole, savedProjectName });
+
+    // Check if project exists (skip if opening from saved projects)
+    if (!skipCheck) {
+      try {
+        console.log('Checking if project exists...');
+        const exists = await checkProjectExists(projectId);
+        console.log('Project exists:', exists);
+        
+        if (!exists) {
+          // Show toast notification - project not found
+          showToast(`Project "${projectId}" không tồn tại trên hệ thống!`, 'error');
+          return;
+        }
+        
+        // Project exists - show success toast
+        showToast('Đang tham gia project...', 'info');
+      } catch (error) {
+        console.error('❌ Error checking project:', error);
+        showToast('Lỗi khi kiểm tra project. Vui lòng thử lại!', 'error');
+        return;
+      }
+    } else {
+      console.log('⏭️ Skipping project existence check (opening from saved projects)');
+    }
+
     const colors = ['#FF6B6B', '#4ECDC4', '#45B7D1', '#FFA07A', '#98D8C8'];
     
     // Check if user is admin
-    const isAdmin = userProfile && userProfile.username === 'gaulmt';
+    const isAdmin = authUser && userProfile && userProfile.username === 'gaulmt';
+    
+    const userId = authUser.uid;
+    
+    // Try to get saved role from project members
+    let role = savedRole;
+    if (!role) {
+      try {
+        const timeoutPromise = new Promise((_, reject) => 
+          setTimeout(() => reject(new Error('Timeout')), 2000)
+        );
+        const rolePromise = getUserRoleInProject(projectId, userId);
+        const savedRoleFromProject = await Promise.race([rolePromise, timeoutPromise]);
+        if (savedRoleFromProject) {
+          role = savedRoleFromProject;
+          console.log('✓ Restored role from project:', role);
+        }
+      } catch (error) {
+        console.log('Could not get saved role, using default:', error.message);
+      }
+    }
+    
+    // If still no role, use default
+    if (!role) {
+      role = isAdmin ? 'admin' : 'member';
+    }
+    
+    let permissions = ['read', 'write'];
+    if (role === 'leader' || role === 'admin') {
+      permissions = ['read', 'write', 'manage'];
+    }
     
     const newUser = {
-      id: `user_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+      id: userId,
       name: username,
       color: colors[Math.floor(Math.random() * colors.length)],
-      role: isAdmin ? 'admin' : 'member',
-      permissions: isAdmin ? ['read', 'write', 'manage'] : ['read', 'write'],
+      role: role,
+      permissions: permissions,
       isAdmin: isAdmin
     };
     
     setUser(newUser);
     setDocumentId(projectId);
+    setProjectName(savedProjectName || projectId); // Use saved name or fallback to projectId
     setShowLanding(false);
+    
+    // Save/update member info and last accessed time
+    try {
+      await updateProjectAccess(userId, projectId);
+      await saveProjectMember(projectId, userId, username, role);
+      await updateProjectActivity(projectId);
+      showToast('Đã tham gia project thành công!', 'success');
+      console.log('✅ Joined project successfully');
+    } catch (error) {
+      console.error('❌ Error joining project:', error);
+      showToast('Lỗi khi cập nhật thông tin: ' + error.message, 'warning');
+    }
     
     joinDocument(projectId, newUser, {
       onUsersUpdate: (userList) => {
@@ -277,48 +396,83 @@ function App() {
             onClose={() => setShowProfile(false)}
           />
         )}
+        
+        {/* Toast Notifications - Always visible */}
+        <div className="toast-container">
+          {toasts.map(toast => (
+            <Toast
+              key={toast.id}
+              message={toast.message}
+              type={toast.type}
+              onClose={() => removeToast(toast.id)}
+            />
+          ))}
+        </div>
       </>
     );
   }
 
   return (
-    <div className="app">
-      <div className="resizable-panel" style={{ width: `${userPanelWidth}px` }}>
-        <UserPanel users={users} currentUser={user} roomId={documentId} userProfile={userProfile} />
-        <div 
-          className="resize-handle resize-handle-right"
-          onMouseDown={(e) => handleResize(e, 'userPanel')}
-        />
-      </div>
-
-      <div className="resizable-panel" style={{ width: `${fileManagerWidth}px` }}>
-        <FileManager documentId={documentId} currentFile={currentFile} onFileSelect={setCurrentFile} />
-        <div 
-          className="resize-handle resize-handle-right"
-          onMouseDown={(e) => handleResize(e, 'fileManager')}
-        />
-      </div>
-
-      <div className="main-content" style={{ flex: showSidebar ? '1' : '1 1 auto' }}>
-        <Editor documentId={documentId} user={user} users={users} currentFile={currentFile} />
-      </div>
-
-      {showSidebar && (
-        <div className="resizable-panel sidebar-panel" style={{ width: `${sidebarWidth}px` }}>
+    <>
+      <div className={`app theme-${theme}`}>
+        <div className="resizable-panel" style={{ width: `${userPanelWidth}px` }}>
+          <UserPanel users={users} currentUser={user} roomId={documentId} userProfile={userProfile} authUser={authUser} />
           <div 
-            className="resize-handle resize-handle-left"
-            onMouseDown={(e) => handleResize(e, 'sidebar')}
+            className="resize-handle resize-handle-right"
+            onMouseDown={(e) => handleResize(e, 'userPanel')}
           />
-          <Sidebar documentId={documentId} user={user} onClose={() => setShowSidebar(false)} />
         </div>
-      )}
 
-      {!showSidebar && (
-        <button className="show-sidebar-btn" onClick={() => setShowSidebar(true)}>
-          💬
-        </button>
-      )}
-    </div>
+        <div className="resizable-panel" style={{ width: `${fileManagerWidth}px` }}>
+          <FileManager documentId={documentId} currentFile={currentFile} onFileSelect={setCurrentFile} />
+          <div 
+            className="resize-handle resize-handle-right"
+            onMouseDown={(e) => handleResize(e, 'fileManager')}
+          />
+        </div>
+
+        <div className="main-content" style={{ flex: showSidebar ? '1' : '1 1 auto' }}>
+          <Editor documentId={documentId} projectName={projectName} user={user} users={users} currentFile={currentFile} theme={theme} onThemeChange={setTheme} />
+        </div>
+
+        {showSidebar && (
+          <div className="resizable-panel sidebar-panel" style={{ width: `${sidebarWidth}px` }}>
+            <div 
+              className="resize-handle resize-handle-left"
+              onMouseDown={(e) => handleResize(e, 'sidebar')}
+            />
+            <Sidebar documentId={documentId} user={user} onClose={() => setShowSidebar(false)} />
+          </div>
+        )}
+
+        {!showSidebar && (
+          <button className="show-sidebar-btn" onClick={() => setShowSidebar(true)}>
+            💬
+          </button>
+        )}
+
+        {/* Confirm Dialog */}
+        {confirmDialog && (
+          <ConfirmDialog
+            message={confirmDialog.message}
+            onConfirm={confirmDialog.onConfirm}
+            onCancel={() => setConfirmDialog(null)}
+          />
+        )}
+      </div>
+
+      {/* Toast Notifications - Always visible */}
+      <div className="toast-container">
+        {toasts.map(toast => (
+          <Toast
+            key={toast.id}
+            message={toast.message}
+            type={toast.type}
+            onClose={() => removeToast(toast.id)}
+          />
+        ))}
+      </div>
+    </>
   );
 }
 

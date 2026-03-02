@@ -1,6 +1,7 @@
 import { useState } from 'react';
-import { FiEdit2, FiCheck, FiX, FiMoreVertical } from 'react-icons/fi';
+import { FiEdit2, FiCheck, FiX, FiMoreVertical, FiUserPlus } from 'react-icons/fi';
 import { updateUserRole, updateUserPermissions, transferLeadership } from '../socket';
+import InviteMembersModal from './InviteMembersModal';
 import './UserPanel.css';
 
 const ROLES = {
@@ -11,11 +12,12 @@ const ROLES = {
   viewer: { label: 'Viewer', color: '#888', icon: '👁️' }
 };
 
-function UserPanel({ users, currentUser, roomId, userProfile }) {
+function UserPanel({ users, currentUser, roomId, userProfile, authUser }) {
   const [editingUserId, setEditingUserId] = useState(null);
   const [showPermissionMenu, setShowPermissionMenu] = useState(null);
   const [selectedRole, setSelectedRole] = useState('');
   const [customPermissions, setCustomPermissions] = useState({ read: true, write: true });
+  const [showInviteModal, setShowInviteModal] = useState(false);
 
   const isLeader = currentUser?.role === 'leader';
 
@@ -105,7 +107,17 @@ function UserPanel({ users, currentUser, roomId, userProfile }) {
       <div className="users-list">
         <div className="users-header">
           <h4>Team ({users.length})</h4>
-          {isLeader && <span className="leader-badge">👑 Bạn là Leader</span>}
+          {isLeader ? (
+            <button 
+              className="invite-members-btn-small"
+              onClick={() => setShowInviteModal(true)}
+              title="Mời thành viên"
+            >
+              <FiUserPlus />
+            </button>
+          ) : (
+            isLeader && <span className="leader-badge">👑 Bạn là Leader</span>
+          )}
         </div>
 
         {users.map((u) => (
@@ -192,7 +204,7 @@ function UserPanel({ users, currentUser, roomId, userProfile }) {
                             className={`role-btn ${u.role === key ? 'active' : ''}`}
                             onClick={() => handleRoleChange(u.id, key)}
                           >
-                            {role.icon} {role.label}
+                            {role.label}
                           </button>
                         )
                       ))}
@@ -202,7 +214,7 @@ function UserPanel({ users, currentUser, roomId, userProfile }) {
                       className="btn-transfer"
                       onClick={() => handleTransferLeadership(u.id)}
                     >
-                      👑 Chuyển quyền Leader
+                      Chuyển quyền Leader
                     </button>
                   </div>
                 )}
@@ -241,6 +253,14 @@ function UserPanel({ users, currentUser, roomId, userProfile }) {
             <p><strong>R</strong> = Read (Đọc) | <strong>W</strong> = Write (Ghi) | <strong>M</strong> = Manage (Quản lý)</p>
           </div>
         </div>
+      )}
+      
+      {showInviteModal && authUser && (
+        <InviteMembersModal
+          roomId={roomId}
+          userId={authUser.uid}
+          onClose={() => setShowInviteModal(false)}
+        />
       )}
     </div>
   );

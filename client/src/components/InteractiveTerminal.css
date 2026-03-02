@@ -1,0 +1,192 @@
+.interactive-terminal {
+  background: #1e1e1e;
+  border-top: 1px solid #3e3e42;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 200px;
+  max-height: 60vh;
+}
+
+.terminal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.5rem 1rem;
+  background: #252526;
+  border-bottom: 1px solid #3e3e42;
+}
+
+.terminal-title {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.terminal-header h4 {
+  font-size: 0.9rem;
+  color: #d4d4d4;
+  margin: 0;
+  font-family: 'Courier New', monospace;
+}
+
+.project-name {
+  font-size: 0.85rem;
+  color: #667eea;
+  font-family: 'Courier New', monospace;
+  font-weight: 500;
+  padding: 0.2rem 0.6rem;
+  background: rgba(102, 126, 234, 0.1);
+  border-radius: 4px;
+  border: 1px solid rgba(102, 126, 234, 0.3);
+}
+
+.terminal-actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.terminal-actions button {
+  padding: 0.3rem 0.6rem;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.85rem;
+  transition: all 0.2s;
+}
+
+.clear-btn {
+  background: #3e3e42;
+  color: #d4d4d4;
+}
+
+.clear-btn:hover {
+  background: #4e4e52;
+}
+
+.close-btn {
+  background: #f48771;
+  color: white;
+}
+
+.close-btn:hover {
+  background: #ff6b6b;
+}
+
+.terminal-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 1rem;
+  font-family: 'Courier New', monospace;
+  font-size: 0.9rem;
+  line-height: 1.6;
+  background: #1e1e1e;
+}
+
+.terminal-line {
+  display: flex;
+  align-items: flex-start;
+  margin-bottom: 0.25rem;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+}
+
+.terminal-line .prompt {
+  color: #4EC9B0;
+  font-weight: bold;
+  margin-right: 0.5rem;
+  flex-shrink: 0;
+}
+
+.terminal-line .content {
+  flex: 1;
+  color: #d4d4d4;
+}
+
+.terminal-line.output .content {
+  color: #d4d4d4;
+}
+
+.terminal-line.input .content {
+  color: #4EC9B0;
+  font-weight: 500;
+}
+
+.terminal-line.error .content {
+  color: #f48771;
+}
+
+.terminal-line.success .content {
+  color: #4EC9B0;
+}
+
+.terminal-line.info .content {
+  color: #888;
+  font-style: italic;
+}
+
+.terminal-line.input-line {
+  background: rgba(78, 201, 176, 0.1);
+  padding: 0.25rem 0.5rem;
+  margin: 0 -0.5rem;
+  border-left: 3px solid #4EC9B0;
+}
+
+.terminal-input {
+  flex: 1;
+  background: transparent;
+  border: none;
+  color: #4EC9B0;
+  font-family: 'Courier New', monospace;
+  font-size: 0.9rem;
+  outline: none;
+  padding: 0;
+}
+
+.terminal-input::placeholder {
+  color: #666;
+  font-style: italic;
+}
+
+.loading-cursor {
+  color: #4EC9B0;
+  animation: blink 1s infinite;
+}
+
+@keyframes blink {
+  0%, 49% { opacity: 1; }
+  50%, 100% { opacity: 0; }
+}
+
+/* Scrollbar styling */
+.terminal-body::-webkit-scrollbar {
+  width: 8px;
+}
+
+.terminal-body::-webkit-scrollbar-track {
+  background: #1e1e1e;
+}
+
+.terminal-body::-webkit-scrollbar-thumb {
+  background: #3e3e42;
+  border-radius: 4px;
+}
+
+.terminal-body::-webkit-scrollbar-thumb:hover {
+  background: #4e4e52;
+}
+
+
+/* Admin link in terminal */
+.admin-link {
+  color: #667eea;
+  text-decoration: none;
+  font-weight: 600;
+  transition: all 0.2s;
+  border-bottom: 1px solid transparent;
+}
+
+.admin-link:hover {
+  color: #764ba2;
+  border-bottom-color: #764ba2;
+}

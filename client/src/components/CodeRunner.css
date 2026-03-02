@@ -3,7 +3,11 @@
   border-top: 1px solid #3e3e42;
   display: flex;
   flex-direction: column;
-  height: 200px;
+  min-height: 200px;
+  max-height: 60vh;
+  height: 100%;
+  resize: vertical;
+  overflow: hidden;
 }
 
 .runner-header {
@@ -186,4 +190,64 @@
   width: 100%;
   border: none;
   background: white;
+}
+
+/* Terminal Input Line - Inline style */
+.terminal-input-line {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.75rem 1rem;
+  background: #1e1e1e;
+  border-bottom: 1px solid #3e3e42;
+}
+
+.terminal-prompt {
+  color: #4EC9B0;
+  font-weight: bold;
+  font-family: 'Courier New', monospace;
+  font-size: 1rem;
+  flex-shrink: 0;
+}
+
+.terminal-prompt.error {
+  color: #f48771;
+}
+
+.terminal-prompt.success {
+  color: #4EC9B0;
+}
+
+.terminal-input-inline {
+  flex: 1;
+  background: transparent;
+  border: none;
+  color: #d4d4d4;
+  font-family: 'Courier New', monospace;
+  font-size: 0.9rem;
+  padding: 0.25rem 0;
+  outline: none;
+}
+
+.terminal-input-inline::placeholder {
+  color: #666;
+  font-style: italic;
+}
+
+.terminal-line {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  padding: 0.5rem 1rem;
+  font-family: 'Courier New', monospace;
+}
+
+.terminal-line.empty {
+  color: #888;
+  font-style: italic;
+}
+
+.terminal-line pre {
+  margin: 0;
+  flex: 1;
 }

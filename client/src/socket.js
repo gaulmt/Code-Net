@@ -1,4 +1,4 @@
-import { ref, set, onValue, push, onDisconnect, serverTimestamp, update, remove } from 'firebase/database';
+import { ref, set, onValue, push, onDisconnect, serverTimestamp, update, remove, get } from 'firebase/database';
 import { database } from './firebase';
 
 export const joinDocument = (documentId, user, callbacks) => {
@@ -65,7 +65,9 @@ export const joinDocument = (documentId, user, callbacks) => {
 };
 
 export const updateContent = (documentId, fileName, content) => {
-  const contentRef = ref(database, `documents/${documentId}/files/${fileName.replace(/\./g, '_')}/content`);
+  // Replace / with __ and . with _DOT_
+  const encodedName = fileName.replace(/\//g, '__').replace(/\./g, '_DOT_');
+  const contentRef = ref(database, `documents/${documentId}/files/${encodedName}/content`);
   set(contentRef, {
     text: content,
     updatedAt: serverTimestamp()
@@ -97,8 +99,8 @@ export const getFiles = (documentId, callback) => {
   onValue(filesRef, (snapshot) => {
     const files = [];
     snapshot.forEach((child) => {
-      // Convert back: main_js -> main.js
-      const fileName = child.key.replace(/_([^_]+)$/, '.$1');
+      // Decode: _DOT_ -> . and __ -> /
+      const fileName = child.key.replace(/_DOT_/g, '.').replace(/__/g, '/');
       files.push({ name: fileName, ...child.val() });
     });
     if (files.length === 0) {
@@ -110,7 +112,9 @@ export const getFiles = (documentId, callback) => {
 };
 
 export const addFile = (documentId, fileName) => {
-  const fileRef = ref(database, `documents/${documentId}/files/${fileName.replace(/\./g, '_')}`);
+  // Replace / with __ and . with _DOT_
+  const encodedName = fileName.replace(/\//g, '__').replace(/\./g, '_DOT_');
+  const fileRef = ref(database, `documents/${documentId}/files/${encodedName}`);
   set(fileRef, {
     content: { text: '// Bắt đầu code...\n', updatedAt: serverTimestamp() },
     createdAt: serverTimestamp()
@@ -118,20 +122,45 @@ export const addFile = (documentId, fileName) => {
 };
 
 export const deleteFile = (documentId, fileName) => {
-  const fileRef = ref(database, `documents/${documentId}/files/${fileName.replace(/\./g, '_')}`);
+  // Replace / with __ and . with _DOT_
+  const encodedName = fileName.replace(/\//g, '__').replace(/\./g, '_DOT_');
+  const fileRef = ref(database, `documents/${documentId}/files/${encodedName}`);
   remove(fileRef);
 };
 
 export const uploadFile = (documentId, fileName, content) => {
-  const fileRef = ref(database, `documents/${documentId}/files/${fileName.replace(/\./g, '_')}`);
+  // Replace / with __ and . with _DOT_
+  const encodedName = fileName.replace(/\//g, '__').replace(/\./g, '_DOT_');
+  const fileRef = ref(database, `documents/${documentId}/files/${encodedName}`);
   set(fileRef, {
     content: { text: content, updatedAt: serverTimestamp() },
     createdAt: serverTimestamp()
   });
 };
 
+export const moveFile = async (documentId, oldPath, newPath) => {
+  // Get old file content
+  const oldEncodedName = oldPath.replace(/\//g, '__').replace(/\./g, '_DOT_');
+  const newEncodedName = newPath.replace(/\//g, '__').replace(/\./g, '_DOT_');
+  
+  const oldFileRef = ref(database, `documents/${documentId}/files/${oldEncodedName}`);
+  const newFileRef = ref(database, `documents/${documentId}/files/${newEncodedName}`);
+  
+  // Get old file data
+  const snapshot = await get(oldFileRef);
+  if (snapshot.exists()) {
+    const fileData = snapshot.val();
+    // Copy to new location
+    await set(newFileRef, fileData);
+    // Delete old location
+    await remove(oldFileRef);
+  }
+};
+
 export const getFileContent = (documentId, fileName, callback) => {
-  const contentRef = ref(database, `documents/${documentId}/files/${fileName.replace(/\./g, '_')}/content`);
+  // Replace / with __ and . with _DOT_
+  const encodedName = fileName.replace(/\//g, '__').replace(/\./g, '_DOT_');
+  const contentRef = ref(database, `documents/${documentId}/files/${encodedName}/content`);
   onValue(contentRef, (snapshot) => {
     const data = snapshot.val();
     callback(data);

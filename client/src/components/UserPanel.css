@@ -361,25 +361,26 @@
 }
 
 .role-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
+  display: flex;
+  flex-direction: column;
   gap: 0.5rem;
   margin-bottom: 0.75rem;
 }
 
 .role-btn {
-  padding: 0.5rem;
+  padding: 0.75rem;
   background: #2d2d30;
   border: 1px solid #3e3e42;
   border-radius: 6px;
   color: #d4d4d4;
-  font-size: 0.8rem;
+  font-size: 0.85rem;
   cursor: pointer;
   transition: all 0.2s;
   display: flex;
   align-items: center;
-  justify-content: center;
-  gap: 0.25rem;
+  justify-content: flex-start;
+  gap: 0.5rem;
+  text-align: left;
 }
 
 .role-btn:hover {
@@ -652,4 +653,29 @@
 .permission-info strong {
   color: #d4d4d4;
   font-weight: 600;
+}
+
+/* Invite Members Button */
+.invite-members-btn-small {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  border: none;
+  border-radius: 6px;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s;
+  font-size: 1rem;
+}
+
+.invite-members-btn-small:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+}
+
+.invite-members-btn-small:active {
+  transform: translateY(0);
 }

@@ -43,14 +43,21 @@ export const signOutUser = async () => {
 };
 
 // Save user's project to their profile
-export const saveUserProject = async (userId, projectCode, projectName) => {
-  const projectRef = ref(database, `users/${userId}/projects/${projectCode}`);
-  await set(projectRef, {
-    code: projectCode,
-    name: projectName || 'Untitled Project',
-    createdAt: Date.now(),
-    lastAccessed: Date.now()
-  });
+export const saveUserProject = async (userId, projectCode, projectName, role = 'leader') => {
+  try {
+    const projectRef = ref(database, `users/${userId}/projects/${projectCode}`);
+    await set(projectRef, {
+      code: projectCode,
+      name: projectName || 'Untitled Project',
+      role: role, // Save user's role in this project
+      createdAt: Date.now(),
+      lastAccessed: Date.now()
+    });
+    console.log('✓ saveUserProject success:', { userId, projectCode, projectName, role });
+  } catch (error) {
+    console.error('❌ saveUserProject failed:', error);
+    throw error;
+  }
 };
 
 // Get user's projects
@@ -138,4 +145,143 @@ export const getProjectCollaborators = async (projectCode) => {
     return snapshot.val();
   }
   return {};
+};
+
+// Check if project exists
+export const checkProjectExists = async (projectCode) => {
+  const projectRef = ref(database, `projects/${projectCode}`);
+  const snapshot = await get(projectRef);
+  return snapshot.exists();
+};
+
+// Create project metadata when project is first created
+export const createProjectMetadata = async (projectCode, projectName, creatorId, creatorName) => {
+  try {
+    const projectRef = ref(database, `projects/${projectCode}/metadata`);
+    await set(projectRef, {
+      name: projectName,
+      createdBy: creatorId,
+      creatorName: creatorName,
+      createdAt: Date.now(),
+      lastActivity: Date.now()
+    });
+    console.log('✓ createProjectMetadata success:', { projectCode, projectName, creatorId, creatorName });
+  } catch (error) {
+    console.error('❌ createProjectMetadata failed:', error);
+    throw error;
+  }
+};
+
+// Update project last activity
+export const updateProjectActivity = async (projectCode) => {
+  const activityRef = ref(database, `projects/${projectCode}/metadata/lastActivity`);
+  await set(activityRef, Date.now());
+};
+
+// Get user's role in a project
+export const getUserProjectRole = async (userId, projectCode) => {
+  const projectRef = ref(database, `users/${userId}/projects/${projectCode}/role`);
+  const snapshot = await get(projectRef);
+  if (snapshot.exists()) {
+    return snapshot.val();
+  }
+  return null;
+};
+
+// Save project member info (for tracking who has access)
+export const saveProjectMember = async (projectCode, userId, username, role) => {
+  try {
+    const memberRef = ref(database, `projects/${projectCode}/members/${userId}`);
+    await set(memberRef, {
+      username: username,
+      role: role,
+      joinedAt: Date.now(),
+      lastAccessed: Date.now()
+    });
+    console.log('✓ saveProjectMember success:', { projectCode, userId, username, role });
+  } catch (error) {
+    console.error('❌ saveProjectMember failed:', error);
+    throw error;
+  }
+};
+
+// Get user's saved role from project members
+export const getUserRoleInProject = async (projectCode, userId) => {
+  const memberRef = ref(database, `projects/${projectCode}/members/${userId}`);
+  const snapshot = await get(memberRef);
+  if (snapshot.exists()) {
+    return snapshot.val().role;
+  }
+  return null;
+};
+
+// Friends System
+export const addFriend = async (userId, friendUserId, friendUsername) => {
+  const friendRef = ref(database, `users/${userId}/friends/${friendUserId}`);
+  await set(friendRef, {
+    username: friendUsername,
+    addedAt: Date.now(),
+    status: 'accepted' // Can be: pending, accepted, blocked
+  });
+  
+  // Add reverse friendship
+  const reverseFriendRef = ref(database, `users/${friendUserId}/friends/${userId}`);
+  const userProfile = await getUserProfile(userId);
+  await set(reverseFriendRef, {
+    username: userProfile?.username || 'Unknown',
+    addedAt: Date.now(),
+    status: 'accepted'
+  });
+};
+
+export const getFriends = async (userId) => {
+  const friendsRef = ref(database, `users/${userId}/friends`);
+  const snapshot = await get(friendsRef);
+  if (snapshot.exists()) {
+    return snapshot.val();
+  }
+  return {};
+};
+
+export const removeFriend = async (userId, friendUserId) => {
+  await set(ref(database, `users/${userId}/friends/${friendUserId}`), null);
+  await set(ref(database, `users/${friendUserId}/friends/${userId}`), null);
+};
+
+// Online Status
+export const setUserOnline = (userId) => {
+  const statusRef = ref(database, `users/${userId}/status`);
+  set(statusRef, {
+    online: true,
+    lastSeen: Date.now()
+  });
+  
+  // Set offline on disconnect
+  onDisconnect(statusRef).set({
+    online: false,
+    lastSeen: Date.now()
+  });
+};
+
+export const getUserStatus = async (userId) => {
+  const statusRef = ref(database, `users/${userId}/status`);
+  const snapshot = await get(statusRef);
+  return snapshot.val() || { online: false, lastSeen: null };
+};
+
+// Search users by username
+export const searchUserByUsername = async (username) => {
+  const usernamesRef = ref(database, 'usernames');
+  const snapshot = await get(usernamesRef);
+  
+  if (snapshot.exists()) {
+    const usernames = snapshot.val();
+    for (const [userId, uname] of Object.entries(usernames)) {
+      if (uname.toLowerCase() === username.toLowerCase()) {
+        const profile = await getUserProfile(userId);
+        return { userId, ...profile };
+      }
+    }
+  }
+  return null;
 };
