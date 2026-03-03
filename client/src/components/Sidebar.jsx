@@ -7,16 +7,23 @@ function Sidebar({ documentId, user, onClose }) {
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState('');
   const messagesEndRef = useRef(null);
+  const hasJoinedRef = useRef(false);
 
   useEffect(() => {
-    if (!user) return;
+    if (!user || !documentId || hasJoinedRef.current) return;
 
+    hasJoinedRef.current = true;
+    
     joinDocument(documentId, user, {
       onChatUpdate: (msgs) => {
         setMessages(msgs);
       }
     });
-  }, [documentId, user]);
+
+    return () => {
+      hasJoinedRef.current = false;
+    };
+  }, [documentId, user?.id]); // Only re-join if documentId or user.id changes
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });

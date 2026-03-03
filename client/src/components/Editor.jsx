@@ -1,32 +1,36 @@
 import { useState, useEffect, useRef } from 'react';
 import MonacoEditor from '@monaco-editor/react';
-import { getFileContent, updateContent, updateCursor, getFiles } from '../socket';
+import { getFileContent, updateContent, getFiles, lockFile, unlockFile, getFileLock } from '../socket';
 import InteractiveTerminal from './InteractiveTerminal';
 import DownloadModal from './DownloadModal';
 import NotificationBell from './NotificationBell';
 import FriendsList from './FriendsList';
 import { FiSave, FiDownload, FiSun, FiMoon, FiUsers } from 'react-icons/fi';
+import JSZip from 'jszip';
+import { saveAs } from 'file-saver';
 import './Editor.css';
 
 function Editor({ documentId, projectName, user, users, currentFile, theme: appTheme, onThemeChange, authUser, userProfile, onProjectJoin }) {
   const [content, setContent] = useState('');
   const [language, setLanguage] = useState('javascript');
-  const [cursors, setCursors] = useState({});
-  const [showCursors, setShowCursors] = useState(true);
   const [showOutput, setShowOutput] = useState(false);
   const [outputHeight, setOutputHeight] = useState(200);
   const [loading, setLoading] = useState(true);
   const [runTrigger, setRunTrigger] = useState(0);
   const [codeToRun, setCodeToRun] = useState('');
   const [saving, setSaving] = useState(false);
+  const [syncing, setSyncing] = useState(false);
   const [showDownloadModal, setShowDownloadModal] = useState(false);
   const [allFiles, setAllFiles] = useState([]);
   const [showFriendsList, setShowFriendsList] = useState(false);
+  const [showSyncModal, setShowSyncModal] = useState(false);
+  const [fileLock, setFileLock] = useState(null);
   const editorRef = useRef(null);
-  const decorationsRef = useRef([]);
   const isRemoteChange = useRef(false);
   const updateTimeoutRef = useRef(null);
   const isComposingRef = useRef(false);
+  const lastSyncedContent = useRef('');
+  const lockListenerRef = useRef(null);
   
   // Use theme from App or fallback to local
   const theme = appTheme || localStorage.getItem('editorTheme') || 'vs-dark';
@@ -39,10 +43,21 @@ function Editor({ documentId, projectName, user, users, currentFile, theme: appT
       if (data && data.text) {
         isRemoteChange.current = true;
         setContent(data.text);
+        lastSyncedContent.current = data.text;
       } else {
         setContent('// Bắt đầu code...\n');
+        lastSyncedContent.current = '// Bắt đầu code...\n';
       }
       setLoading(false);
+    });
+    
+    // Listen to file lock status
+    if (lockListenerRef.current) {
+      lockListenerRef.current(); // Unsubscribe previous listener
+    }
+    
+    lockListenerRef.current = getFileLock(documentId, currentFile, (lockData) => {
+      setFileLock(lockData);
     });
     
     // Save last opened file
@@ -52,6 +67,9 @@ function Editor({ documentId, projectName, user, users, currentFile, theme: appT
     return () => {
       if (updateTimeoutRef.current) {
         clearTimeout(updateTimeoutRef.current);
+      }
+      if (lockListenerRef.current) {
+        lockListenerRef.current();
       }
     };
   }, [documentId, currentFile]);
@@ -65,30 +83,17 @@ function Editor({ documentId, projectName, user, users, currentFile, theme: appT
     });
   }, [documentId]);
 
+  // Close sync modal when clicking outside
   useEffect(() => {
-    if (!editorRef.current || !showCursors) {
-      decorationsRef.current = editorRef.current?.deltaDecorations(decorationsRef.current, []) || [];
-      return;
-    }
-
-    const newDecorations = Object.entries(cursors)
-      .filter(([userId]) => userId !== user?.id)
-      .map(([userId, cursor]) => {
-        const userData = users.find(u => u.id === userId);
-        const color = userData?.color || '#999';
-        
-        return {
-          range: new window.monaco.Range(cursor.line, cursor.column, cursor.line, cursor.column + 1),
-          options: {
-            className: 'remote-cursor',
-            stickiness: 1,
-            zIndex: 1000
-          }
-        };
-      });
-
-    decorationsRef.current = editorRef.current.deltaDecorations(decorationsRef.current, newDecorations);
-  }, [cursors, showCursors, users, user]);
+    const handleClickOutside = (e) => {
+      if (showSyncModal && !e.target.closest('.sync-dropdown')) {
+        setShowSyncModal(false);
+      }
+    };
+    
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [showSyncModal]);
 
   const handleEditorChange = (value) => {
     if (isRemoteChange.current) {
@@ -102,17 +107,39 @@ function Editor({ documentId, projectName, user, users, currentFile, theme: appT
     }
     
     setContent(value);
+  };
+
+  // Manual sync with file locking
+  const syncNow = async () => {
+    if (!documentId || !currentFile || !content) return;
+    if (content === lastSyncedContent.current) return;
+    if (isComposingRef.current) return;
     
-    // Debounce update to Firebase - wait 300ms after last keystroke
-    if (updateTimeoutRef.current) {
-      clearTimeout(updateTimeoutRef.current);
-    }
-    
-    // Don't sync while composing Vietnamese characters
-    if (!isComposingRef.current && documentId && currentFile) {
-      updateTimeoutRef.current = setTimeout(() => {
-        updateContent(documentId, currentFile, value);
-      }, 300);
+    try {
+      setSyncing(true);
+      
+      // Lock the file
+      await lockFile(documentId, currentFile, user.id, user.name);
+      
+      // Wait a bit to ensure lock is propagated
+      await new Promise(resolve => setTimeout(resolve, 200));
+      
+      // Update content
+      await updateContent(documentId, currentFile, content);
+      lastSyncedContent.current = content;
+      
+      // Wait a bit before unlocking
+      await new Promise(resolve => setTimeout(resolve, 500));
+      
+      // Unlock the file
+      await unlockFile(documentId, currentFile);
+      
+      setSyncing(false);
+    } catch (error) {
+      console.error('Sync error:', error);
+      setSyncing(false);
+      // Ensure unlock even on error
+      await unlockFile(documentId, currentFile);
     }
   };
 
@@ -130,40 +157,19 @@ function Editor({ documentId, projectName, user, users, currentFile, theme: appT
         
         textArea.addEventListener('compositionend', () => {
           isComposingRef.current = false;
-          // Sync after composition ends
-          if (documentId && currentFile && content) {
-            updateContent(documentId, currentFile, content);
-          }
         });
       }
     }
-    
-    editor.onDidChangeCursorPosition((e) => {
-      if (documentId && user) {
-        updateCursor(documentId, user.id, e.position);
-      }
-    });
 
     // Keyboard shortcut: Ctrl+Enter to run
     editor.addCommand(window.monaco.KeyMod.CtrlCmd | window.monaco.KeyCode.Enter, () => {
       handleRun();
     });
 
-    if (!document.getElementById('cursor-styles')) {
-      const style = document.createElement('style');
-      style.id = 'cursor-styles';
-      style.textContent = `
-        .remote-cursor {
-          border-left: 2px solid;
-          animation: blink 1s infinite;
-        }
-        @keyframes blink {
-          0%, 49% { opacity: 1; }
-          50%, 100% { opacity: 0.3; }
-        }
-      `;
-      document.head.appendChild(style);
-    }
+    // Keyboard shortcut: Ctrl+S to save/sync
+    editor.addCommand(window.monaco.KeyMod.CtrlCmd | window.monaco.KeyCode.KeyS, () => {
+      syncNow();
+    });
   };
 
   const handleRun = () => {
@@ -234,6 +240,35 @@ function Editor({ documentId, projectName, user, users, currentFile, theme: appT
       } catch (error) {
         console.error(`Error downloading ${fileName}:`, error);
       }
+    }
+  };
+
+  const handleDownloadZip = async (selectedFiles) => {
+    try {
+      const zip = new JSZip();
+      
+      // Add all selected files to ZIP with folder structure
+      for (const fileName of selectedFiles) {
+        await new Promise((resolve) => {
+          getFileContent(documentId, fileName, (data) => {
+            const fileContent = data?.text || '';
+            // fileName already includes folder path (e.g., "src/App.jsx")
+            zip.file(fileName, fileContent);
+            resolve();
+          });
+        });
+      }
+      
+      // Generate ZIP file
+      const blob = await zip.generateAsync({ type: 'blob' });
+      
+      // Save ZIP file
+      const zipName = projectName ? `${projectName}.zip` : `project-${documentId}.zip`;
+      saveAs(blob, zipName);
+      
+    } catch (error) {
+      console.error('Error creating ZIP:', error);
+      alert('Lỗi khi tạo file ZIP: ' + error.message);
     }
   };
 
@@ -351,6 +386,21 @@ function Editor({ documentId, projectName, user, users, currentFile, theme: appT
             </>
           )}
           <span className="current-file">{currentFile}</span>
+          {syncing && (
+            <span className="sync-indicator-large" title="Đang đồng bộ...">
+              <span className="sync-spinner"></span> Đang đồng bộ với mọi người...
+            </span>
+          )}
+          {!syncing && fileLock?.isLocked && fileLock.lockedBy !== user?.id && (
+            <span className="locked-indicator" title={`${fileLock.lockedByName} đang đồng bộ`}>
+              <span className="sync-spinner"></span> {fileLock.lockedByName} đang đồng bộ...
+            </span>
+          )}
+          {!syncing && !fileLock?.isLocked && content !== lastSyncedContent.current && user?.permissions?.includes('write') && (
+            <span className="unsaved-indicator" title="Có thay đổi chưa lưu">
+              ● Chưa lưu
+            </span>
+          )}
         </div>
         <div className="editor-controls">
           {/* Notification Bell */}
@@ -378,13 +428,60 @@ function Editor({ documentId, projectName, user, users, currentFile, theme: appT
           )}
           
           {user?.permissions?.includes('write') && (
-            <button 
-              className="download-btn"
-              onClick={handleDownload}
-              title="Tải về máy"
-            >
-              <FiDownload /> Download
-            </button>
+            <>
+              <div className="sync-dropdown">
+                <button 
+                  className={`save-btn-primary ${syncing ? 'syncing' : ''}`}
+                  onClick={syncNow}
+                  title="Đồng bộ file hiện tại (Ctrl+S)"
+                  disabled={syncing || content === lastSyncedContent.current}
+                >
+                  <FiSave /> {syncing ? 'Đang đồng bộ...' : 'Đồng bộ'}
+                </button>
+                <button 
+                  className="sync-dropdown-btn"
+                  onClick={() => setShowSyncModal(!showSyncModal)}
+                  title="Chọn files để đồng bộ"
+                  disabled={syncing}
+                >
+                  ▼
+                </button>
+                {showSyncModal && (
+                  <div className="sync-modal-dropdown">
+                    <div className="sync-modal-header">Chọn file để đồng bộ</div>
+                    <div className="sync-modal-options">
+                      <button 
+                        className="sync-option"
+                        onClick={() => {
+                          syncNow();
+                          setShowSyncModal(false);
+                        }}
+                      >
+                        <FiSave /> File hiện tại: {currentFile}
+                      </button>
+                      <button 
+                        className="sync-option"
+                        onClick={() => {
+                          // TODO: Implement sync all files
+                          alert('Tính năng đồng bộ tất cả files đang được phát triển');
+                          setShowSyncModal(false);
+                        }}
+                      >
+                        📁 Tất cả files trong project
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+              
+              <button 
+                className="download-btn"
+                onClick={handleDownload}
+                title="Tải về máy"
+              >
+                <FiDownload /> Download
+              </button>
+            </>
           )}
           
           <button 
@@ -394,15 +491,6 @@ function Editor({ documentId, projectName, user, users, currentFile, theme: appT
           >
             {getThemeIcon()} {getThemeName()}
           </button>
-          
-          <label className="cursor-toggle">
-            <input 
-              type="checkbox" 
-              checked={showCursors} 
-              onChange={(e) => setShowCursors(e.target.checked)}
-            />
-            Hiện cursor
-          </label>
           
           {user?.permissions?.includes('write') && (
             <button 
@@ -430,7 +518,7 @@ function Editor({ documentId, projectName, user, users, currentFile, theme: appT
             scrollBeyondLastLine: false,
             cursorBlinking: 'smooth',
             cursorSmoothCaretAnimation: true,
-            readOnly: !user?.permissions?.includes('write'),
+            readOnly: !user?.permissions?.includes('write') || (fileLock?.isLocked && fileLock.lockedBy !== user?.id),
             // Fix Vietnamese input issue
             quickSuggestions: false,
             acceptSuggestionOnCommitCharacter: false,
@@ -463,6 +551,8 @@ function Editor({ documentId, projectName, user, users, currentFile, theme: appT
           currentFile={currentFile}
           onClose={() => setShowDownloadModal(false)}
           onDownload={handleDownloadFiles}
+          onDownloadZip={handleDownloadZip}
+          projectName={projectName}
         />
       )}
       

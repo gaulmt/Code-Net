@@ -74,6 +74,37 @@ export const updateContent = (documentId, fileName, content) => {
   });
 };
 
+export const lockFile = async (documentId, fileName, userId, username) => {
+  const encodedName = fileName.replace(/\//g, '__').replace(/\./g, '_DOT_');
+  const lockRef = ref(database, `documents/${documentId}/files/${encodedName}/lock`);
+  await set(lockRef, {
+    isLocked: true,
+    lockedBy: userId,
+    lockedByName: username,
+    lockedAt: serverTimestamp()
+  });
+};
+
+export const unlockFile = async (documentId, fileName) => {
+  const encodedName = fileName.replace(/\//g, '__').replace(/\./g, '_DOT_');
+  const lockRef = ref(database, `documents/${documentId}/files/${encodedName}/lock`);
+  await set(lockRef, {
+    isLocked: false,
+    lockedBy: null,
+    lockedByName: null,
+    lockedAt: null
+  });
+};
+
+export const getFileLock = (documentId, fileName, callback) => {
+  const encodedName = fileName.replace(/\//g, '__').replace(/\./g, '_DOT_');
+  const lockRef = ref(database, `documents/${documentId}/files/${encodedName}/lock`);
+  return onValue(lockRef, (snapshot) => {
+    const lockData = snapshot.val();
+    callback(lockData);
+  });
+};
+
 export const updateCursor = (documentId, userId, position) => {
   const cursorRef = ref(database, `documents/${documentId}/cursors/${userId}`);
   set(cursorRef, {

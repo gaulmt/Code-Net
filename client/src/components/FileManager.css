@@ -438,6 +438,23 @@
   color: #5fd9cf;
 }
 
+.add-folder-btn {
+  background: transparent;
+  border: none;
+  color: #667eea;
+  cursor: pointer;
+  padding: 0.25rem;
+  display: flex;
+  align-items: center;
+  border-radius: 3px;
+  transition: all 0.2s;
+}
+
+.add-folder-btn:hover {
+  background: #3e3e42;
+  color: #764ba2;
+}
+
 .folder-indicator {
   display: flex;
   align-items: center;

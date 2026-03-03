@@ -7,7 +7,10 @@
     "server": "node server.js",
     "client": "cd client && npm run dev",
     "build": "cd client && npm run build",
-    "preview": "cd client && npm run preview"
+    "preview": "cd client && npm run preview",
+    "deploy:vercel": "cd client && vercel --prod",
+    "deploy:netlify": "cd client && netlify deploy --prod",
+    "test:build": "cd client && npm run build && npm run preview"
   },
   "keywords": [
     "collaborative",

@@ -22,25 +22,21 @@ function InviteMembersModal({ roomId, userId, onClose, projectName, userProfile 
     
     try {
       const friendsData = await getFriends(userId);
-      const friendsList = Object.entries(friendsData).map(([friendId, data]) => ({
-        id: friendId,
-        ...data
-      }));
+      const friendsList = [];
+      
+      // Load full profile for each friend
+      for (const [friendId, data] of Object.entries(friendsData)) {
+        const profile = await getUserProfile(friendId);
+        const status = await getUserStatus(friendId);
+        friendsList.push({
+          id: friendId,
+          ...data,
+          ...profile
+        });
+        setFriendsStatus(prev => ({ ...prev, [friendId]: status }));
+      }
       
       setFriends(friendsList);
-      
-      // Load online status for each friend
-      const statusPromises = friendsList.map(friend => 
-        getUserStatus(friend.id).then(status => ({ id: friend.id, status }))
-      );
-      
-      const statuses = await Promise.all(statusPromises);
-      const statusMap = {};
-      statuses.forEach(({ id, status }) => {
-        statusMap[id] = status;
-      });
-      
-      setFriendsStatus(statusMap);
     } catch (error) {
       console.error('Error loading friends:', error);
     } finally {
@@ -178,12 +174,6 @@ function InviteMembersModal({ roomId, userId, onClose, projectName, userProfile 
                       <div>
                         <div className="result-username">
                           {searchResult.username}
-                          {searchResult.username === 'gaulmt' && (
-                            <svg className="verified-badge" viewBox="0 0 24 24" width="16" height="16">
-                              <path fill="#1DA1F2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
-                              <path fill="#fff" d="M9 12l2 2 4-4" stroke="#1DA1F2" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                            </svg>
-                          )}
                         </div>
                       </div>
                     </div>
@@ -223,14 +213,13 @@ function InviteMembersModal({ roomId, userId, onClose, projectName, userProfile 
                 {friends.map((friend) => {
                   const status = friendsStatus[friend.id];
                   const isOnline = status?.online;
-                  const isAdmin = friend.username === 'gaulmt';
                   
                   return (
                     <div key={friend.id} className="friend-item">
                       <div className="friend-info">
                         <div className="friend-avatar">
                           <img 
-                            src={`https://ui-avatars.com/api/?name=${encodeURIComponent(friend.username)}&background=random`}
+                            src={friend.photoURL || `https://ui-avatars.com/api/?name=${encodeURIComponent(friend.username)}&background=random`}
                             alt={friend.username}
                           />
                           <span className={`status-dot ${isOnline ? 'online' : 'offline'}`}></span>
@@ -238,12 +227,6 @@ function InviteMembersModal({ roomId, userId, onClose, projectName, userProfile 
                         <div className="friend-details">
                           <div className="friend-name">
                             {friend.username}
-                            {isAdmin && (
-                              <svg className="verified-badge" viewBox="0 0 24 24" width="16" height="16">
-                                <path fill="#1DA1F2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
-                                <path fill="#fff" d="M9 12l2 2 4-4" stroke="#1DA1F2" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                              </svg>
-                            )}
                           </div>
                           <span className="friend-status">
                             {isOnline ? 'Đang online' : 'Offline'}

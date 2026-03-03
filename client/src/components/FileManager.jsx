@@ -67,15 +67,31 @@ function FileManager({ documentId, currentFile, onFileSelect }) {
     setExpandedFolders(prev => ({ ...prev, [folderName]: true }));
   };
 
+  const handleCreateFolderInFolder = (parentFolder) => {
+    setActiveFolder(parentFolder);
+    setCreateMode('folder');
+    setShowCreateMenu(true);
+    setNewFolderName('');
+    // Auto expand parent folder
+    setExpandedFolders(prev => ({ ...prev, [parentFolder]: true }));
+  };
+
   const handleCreateFolder = () => {
     if (newFolderName.trim()) {
       const folderName = newFolderName.trim();
-      console.log('Creating folder:', folderName); // Debug log
-      addFile(documentId, `${folderName}/.folder`);
+      // If creating in folder, prepend parent folder path
+      const fullPath = activeFolder ? `${activeFolder}/${folderName}` : folderName;
+      console.log('Creating folder:', fullPath); // Debug log
+      addFile(documentId, `${fullPath}/.folder`);
       setNewFolderName('');
       setShowCreateMenu(false);
-      // Auto expand the new folder
-      setExpandedFolders(prev => ({ ...prev, [folderName]: true }));
+      setActiveFolder(null);
+      // Auto expand the new folder and parent
+      setExpandedFolders(prev => ({ 
+        ...prev, 
+        [fullPath]: true,
+        ...(activeFolder ? { [activeFolder]: true } : {})
+      }));
     }
   };
 
@@ -87,55 +103,220 @@ function FileManager({ documentId, currentFile, onFileSelect }) {
     }));
   };
 
-  // Organize files into folders
-  const organizeFiles = () => {
-    const structure = { root: [] };
+  // Build nested folder tree structure
+  const buildFolderTree = () => {
+    const tree = { root: { files: [], folders: {} } };
     
     files.forEach(file => {
       const parts = file.name.split('/');
-      if (parts.length > 1) {
-        // File in folder
-        const folder = parts[0];
-        if (!structure[folder]) {
-          structure[folder] = [];
-        }
-        // Don't add .folder marker to file list, but keep folder in structure
-        if (parts[1] !== '.folder') {
-          structure[folder].push({ ...file, displayName: parts.slice(1).join('/') });
-        }
+      
+      if (parts.length === 1) {
+        // Root level file
+        tree.root.files.push({ ...file, displayName: file.name });
       } else {
-        // Root file
-        structure.root.push({ ...file, displayName: file.name });
+        // Navigate/create folder structure
+        let current = tree.root;
+        
+        for (let i = 0; i < parts.length - 1; i++) {
+          const folderName = parts[i];
+          if (!current.folders[folderName]) {
+            current.folders[folderName] = { files: [], folders: {} };
+          }
+          current = current.folders[folderName];
+        }
+        
+        // Add file to the deepest folder (skip .folder markers)
+        const fileName = parts[parts.length - 1];
+        if (fileName !== '.folder') {
+          current.files.push({ 
+            ...file, 
+            displayName: fileName,
+            fullPath: file.name 
+          });
+        }
       }
     });
     
-    // Sort files based on custom order
-    const sortFiles = (fileList) => {
-      return fileList.sort((a, b) => {
-        const orderA = fileOrder[a.name] ?? 999999;
-        const orderB = fileOrder[b.name] ?? 999999;
-        if (orderA !== orderB) {
-          return orderA - orderB;
-        }
-        // Fallback to alphabetical
-        return a.displayName.localeCompare(b.displayName);
+    // Sort function
+    const sortItems = (items) => {
+      return items.sort((a, b) => {
+        const orderA = fileOrder[a.name || a.fullPath] ?? 999999;
+        const orderB = fileOrder[b.name || b.fullPath] ?? 999999;
+        if (orderA !== orderB) return orderA - orderB;
+        return (a.displayName || '').localeCompare(b.displayName || '');
       });
     };
     
-    // Sort root files
-    structure.root = sortFiles(structure.root);
+    // Recursively sort all files and folders
+    const sortTree = (node) => {
+      node.files = sortItems(node.files);
+      Object.keys(node.folders).forEach(folderName => {
+        sortTree(node.folders[folderName]);
+      });
+    };
     
-    // Sort files in each folder
-    Object.keys(structure).forEach(key => {
-      if (key !== 'root') {
-        structure[key] = sortFiles(structure[key]);
-      }
-    });
-    
-    return structure;
+    sortTree(tree.root);
+    return tree;
   };
 
-  const fileStructure = organizeFiles();
+  const fileTree = buildFolderTree();
+
+  // Recursive component to render folder tree
+  const renderFolderTree = (node, path = '') => {
+    const folderNames = Object.keys(node.folders);
+    
+    return (
+      <>
+        {/* Render files at this level */}
+        {node.files.map((file) => (
+          <div
+            key={file.fullPath || file.name}
+            className={`file-item ${currentFile === (file.fullPath || file.name) ? 'active' : ''} ${draggedFile?.name === (file.fullPath || file.name) ? 'dragging' : ''} ${dropTarget === (file.fullPath || file.name) ? 'drop-target-file' : ''} ${renamingFile === (file.fullPath || file.name) ? 'renaming' : ''}`}
+            onClick={() => renamingFile !== (file.fullPath || file.name) && handleFileClick(file.fullPath || file.name)}
+            draggable={renamingFile !== (file.fullPath || file.name)}
+            onDragStart={(e) => handleDragStart(e, file)}
+            onDragEnd={handleDragEnd}
+            onDragOver={(e) => {
+              if (draggedFile && draggedFile.name !== (file.fullPath || file.name)) {
+                e.preventDefault();
+                e.stopPropagation();
+                setDropTarget(file.fullPath || file.name);
+              }
+            }}
+            onDrop={(e) => {
+              e.stopPropagation();
+              handleDrop(e, null, file);
+            }}
+          >
+            <FiFile className="file-icon" />
+            {renamingFile === (file.fullPath || file.name) ? (
+              <input
+                type="text"
+                className="rename-input"
+                value={renameValue}
+                onChange={(e) => setRenameValue(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    handleRename(file.fullPath || file.name);
+                  } else if (e.key === 'Escape') {
+                    cancelRename();
+                  }
+                }}
+                onBlur={() => handleRename(file.fullPath || file.name)}
+                autoFocus
+                onClick={(e) => e.stopPropagation()}
+              />
+            ) : (
+              <span className="file-name">{file.displayName}</span>
+            )}
+            <div className="file-item-actions">
+              <button
+                className="rename-btn"
+                onClick={(e) => startRename(file, e)}
+                title="Đổi tên file"
+              >
+                <FiEdit2 />
+              </button>
+              <button
+                className="delete-btn"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleDelete(file.fullPath || file.name);
+                }}
+                title="Xóa file"
+              >
+                <FiTrash2 />
+              </button>
+            </div>
+          </div>
+        ))}
+        
+        {/* Render folders at this level */}
+        {folderNames.map(folderName => {
+          const folderPath = path ? `${path}/${folderName}` : folderName;
+          const folderNode = node.folders[folderName];
+          const hasContent = folderNode.files.length > 0 || Object.keys(folderNode.folders).length > 0;
+          
+          return (
+            <div key={folderPath} className="folder-container">
+              <div 
+                className={`folder-item ${dropTarget === folderPath ? 'drop-target' : ''}`}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  toggleFolder(folderPath);
+                }}
+                onDragOver={(e) => handleDragOver(e, folderPath)}
+                onDragLeave={handleDragLeave}
+                onDrop={(e) => handleDrop(e, folderPath)}
+              >
+                {expandedFolders[folderPath] ? <FiChevronDown /> : <FiChevronRight />}
+                <FiFolder className="folder-icon" />
+                <span className="folder-name">{folderName}</span>
+                <div className="folder-actions">
+                  <button
+                    className="add-file-btn"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleCreateFileInFolder(folderPath);
+                    }}
+                    title="Tạo file trong folder"
+                  >
+                    <FiPlus />
+                  </button>
+                  <button
+                    className="add-folder-btn"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleCreateFolderInFolder(folderPath);
+                    }}
+                    title="Tạo folder trong folder"
+                  >
+                    <FiFolder />
+                  </button>
+                  <button
+                    className="delete-btn"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (confirm(`Xóa folder "${folderName}"${hasContent ? ' và tất cả nội dung bên trong' : ''}?`)) {
+                        // Delete all files in this folder recursively
+                        const deleteRecursive = (node, basePath) => {
+                          node.files.forEach(f => deleteFile(documentId, f.fullPath || f.name));
+                          Object.keys(node.folders).forEach(subFolder => {
+                            deleteRecursive(node.folders[subFolder], `${basePath}/${subFolder}`);
+                          });
+                        };
+                        deleteRecursive(folderNode, folderPath);
+                        deleteFile(documentId, `${folderPath}/.folder`);
+                      }
+                    }}
+                  >
+                    <FiTrash2 />
+                  </button>
+                </div>
+              </div>
+              
+              {expandedFolders[folderPath] && (
+                <div className="folder-contents">
+                  {hasContent ? (
+                    renderFolderTree(folderNode, folderPath)
+                  ) : (
+                    <div 
+                      className={`empty-folder ${dropTarget === folderPath ? 'drop-target' : ''}`}
+                      onDragOver={(e) => handleDragOver(e, folderPath)}
+                      onDragLeave={handleDragLeave}
+                      onDrop={(e) => handleDrop(e, folderPath)}
+                    >
+                      <span>Folder rỗng - Kéo file vào đây</span>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </>
+    );
+  };
 
   const handleUpload = (e) => {
     const files = Array.from(e.target.files);
@@ -163,7 +344,7 @@ function FileManager({ documentId, currentFile, onFileSelect }) {
   // Rename handlers
   const startRename = (file, e) => {
     e.stopPropagation();
-    setRenamingFile(file.name);
+    setRenamingFile(file.fullPath || file.name);
     setRenameValue(file.displayName); // Use displayName for files in folders
   };
 
@@ -444,6 +625,11 @@ function FileManager({ documentId, currentFile, onFileSelect }) {
             </div>
           ) : (
             <div className="form-content">
+              {activeFolder && (
+                <div className="folder-indicator">
+                  <FiFolder /> Tạo trong: <strong>{activeFolder}</strong>
+                </div>
+              )}
               <input
                 type="text"
                 placeholder="Tên folder..."
@@ -457,7 +643,10 @@ function FileManager({ documentId, currentFile, onFileSelect }) {
                 <button onClick={handleCreateFolder} className="btn-create">
                   Tạo Folder
                 </button>
-                <button onClick={() => setShowCreateMenu(false)} className="btn-cancel">
+                <button onClick={() => {
+                  setShowCreateMenu(false);
+                  setActiveFolder(null);
+                }} className="btn-cancel">
                   Hủy
                 </button>
               </div>
@@ -489,200 +678,9 @@ function FileManager({ documentId, currentFile, onFileSelect }) {
             <p>Chưa có file nào</p>
           </div>
         ) : (
-          <>
-            {/* Root files */}
-            <div className="root-files">
-              {fileStructure.root.map((file) => (
-                <div
-                  key={file.name}
-                  className={`file-item ${currentFile === file.name ? 'active' : ''} ${draggedFile?.name === file.name ? 'dragging' : ''} ${dropTarget === file.name ? 'drop-target-file' : ''} ${renamingFile === file.name ? 'renaming' : ''}`}
-                  onClick={() => renamingFile !== file.name && handleFileClick(file.name)}
-                  draggable={renamingFile !== file.name}
-                  onDragStart={(e) => handleDragStart(e, file)}
-                  onDragEnd={handleDragEnd}
-                  onDragOver={(e) => {
-                    if (draggedFile && draggedFile.name !== file.name) {
-                      e.preventDefault();
-                      e.stopPropagation();
-                      setDropTarget(file.name);
-                    }
-                  }}
-                  onDrop={(e) => {
-                    e.stopPropagation();
-                    handleDrop(e, null, file);
-                  }}
-                >
-                  <FiFile className="file-icon" />
-                  {renamingFile === file.name ? (
-                    <input
-                      type="text"
-                      className="rename-input"
-                      value={renameValue}
-                      onChange={(e) => setRenameValue(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter') {
-                          handleRename(file.name);
-                        } else if (e.key === 'Escape') {
-                          cancelRename();
-                        }
-                      }}
-                      onBlur={() => handleRename(file.name)}
-                      autoFocus
-                      onClick={(e) => e.stopPropagation()}
-                    />
-                  ) : (
-                    <span className="file-name">{file.displayName}</span>
-                  )}
-                  <div className="file-item-actions">
-                    <button
-                      className="rename-btn"
-                      onClick={(e) => startRename(file, e)}
-                      title="Đổi tên file"
-                    >
-                      <FiEdit2 />
-                    </button>
-                    <button
-                      className="delete-btn"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleDelete(file.name);
-                      }}
-                      title="Xóa file"
-                    >
-                      <FiTrash2 />
-                    </button>
-                  </div>
-                </div>
-              ))}
-            </div>
-            
-            {/* Folders */}
-            {Object.keys(fileStructure).filter(k => k !== 'root').map(folderName => {
-              const folderFiles = fileStructure[folderName];
-              const hasFiles = folderFiles.length > 0;
-              
-              return (
-                <div key={folderName} className="folder-container">
-                  <div 
-                    className={`folder-item ${dropTarget === folderName ? 'drop-target' : ''}`}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      toggleFolder(folderName);
-                    }}
-                    onDragOver={(e) => handleDragOver(e, folderName)}
-                    onDragLeave={handleDragLeave}
-                    onDrop={(e) => handleDrop(e, folderName)}
-                  >
-                    {expandedFolders[folderName] ? <FiChevronDown /> : <FiChevronRight />}
-                    <FiFolder className="folder-icon" />
-                    <span className="folder-name">{folderName}</span>
-                    <div className="folder-actions">
-                      <button
-                        className="add-file-btn"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleCreateFileInFolder(folderName);
-                        }}
-                        title="Tạo file trong folder"
-                      >
-                        <FiPlus />
-                      </button>
-                      <button
-                        className="delete-btn"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          if (confirm(`Xóa folder "${folderName}"${hasFiles ? ' và tất cả files bên trong' : ''}?`)) {
-                            folderFiles.forEach(f => deleteFile(documentId, f.name));
-                            deleteFile(documentId, `${folderName}/.folder`);
-                          }
-                        }}
-                      >
-                        <FiTrash2 />
-                      </button>
-                    </div>
-                  </div>
-                  
-                  {expandedFolders[folderName] && (
-                    <div className="folder-contents">
-                      {hasFiles ? (
-                        folderFiles.map((file) => (
-                          <div
-                            key={file.name}
-                            className={`file-item nested ${currentFile === file.name ? 'active' : ''} ${draggedFile?.name === file.name ? 'dragging' : ''} ${dropTarget === file.name ? 'drop-target-file' : ''} ${renamingFile === file.name ? 'renaming' : ''}`}
-                            onClick={() => renamingFile !== file.name && handleFileClick(file.name)}
-                            draggable={renamingFile !== file.name}
-                            onDragStart={(e) => handleDragStart(e, file)}
-                            onDragEnd={handleDragEnd}
-                            onDragOver={(e) => {
-                              if (draggedFile && draggedFile.name !== file.name) {
-                                e.preventDefault();
-                                e.stopPropagation();
-                                setDropTarget(file.name);
-                              }
-                            }}
-                            onDrop={(e) => {
-                              e.stopPropagation();
-                              handleDrop(e, null, file);
-                            }}
-                          >
-                            <FiFile className="file-icon" />
-                            {renamingFile === file.name ? (
-                              <input
-                                type="text"
-                                className="rename-input"
-                                value={renameValue}
-                                onChange={(e) => setRenameValue(e.target.value)}
-                                onKeyDown={(e) => {
-                                  if (e.key === 'Enter') {
-                                    handleRename(file.name);
-                                  } else if (e.key === 'Escape') {
-                                    cancelRename();
-                                  }
-                                }}
-                                onBlur={() => handleRename(file.name)}
-                                autoFocus
-                                onClick={(e) => e.stopPropagation()}
-                              />
-                            ) : (
-                              <span className="file-name">{file.displayName}</span>
-                            )}
-                            <div className="file-item-actions">
-                              <button
-                                className="rename-btn"
-                                onClick={(e) => startRename(file, e)}
-                                title="Đổi tên file"
-                              >
-                                <FiEdit2 />
-                              </button>
-                              <button
-                                className="delete-btn"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  handleDelete(file.name);
-                                }}
-                                title="Xóa file"
-                              >
-                                <FiTrash2 />
-                              </button>
-                            </div>
-                          </div>
-                        ))
-                      ) : (
-                        <div 
-                          className={`empty-folder ${dropTarget === folderName ? 'drop-target' : ''}`}
-                          onDragOver={(e) => handleDragOver(e, folderName)}
-                          onDragLeave={handleDragLeave}
-                          onDrop={(e) => handleDrop(e, folderName)}
-                        >
-                          <span>Folder rỗng - Kéo file vào đây</span>
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </>
+          <div className="root-files">
+            {renderFolderTree(fileTree.root)}
+          </div>
         )}
       </div>
     </div>

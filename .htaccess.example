@@ -1,0 +1,84 @@
+# .htaccess for Code Net on InfinityFree
+# Copy this file to htdocs as .htaccess
+
+# Enable Rewrite Engine for SPA routing
+<IfModule mod_rewrite.c>
+  RewriteEngine On
+  RewriteBase /
+  
+  # Redirect all requests to index.html for React Router
+  RewriteRule ^index\.html$ - [L]
+  RewriteCond %{REQUEST_FILENAME} !-f
+  RewriteCond %{REQUEST_FILENAME} !-d
+  RewriteRule . /index.html [L]
+</IfModule>
+
+# Compression for faster loading
+<IfModule mod_deflate.c>
+  AddOutputFilterByType DEFLATE text/html text/plain text/xml text/css text/javascript application/javascript application/json
+</IfModule>
+
+# Browser Caching
+<IfModule mod_expires.c>
+  ExpiresActive On
+  
+  # Images
+  ExpiresByType image/jpg "access plus 1 year"
+  ExpiresByType image/jpeg "access plus 1 year"
+  ExpiresByType image/gif "access plus 1 year"
+  ExpiresByType image/png "access plus 1 year"
+  ExpiresByType image/svg+xml "access plus 1 year"
+  ExpiresByType image/webp "access plus 1 year"
+  ExpiresByType image/x-icon "access plus 1 year"
+  
+  # CSS and JavaScript
+  ExpiresByType text/css "access plus 1 month"
+  ExpiresByType application/javascript "access plus 1 month"
+  ExpiresByType text/javascript "access plus 1 month"
+  
+  # Fonts
+  ExpiresByType font/woff "access plus 1 year"
+  ExpiresByType font/woff2 "access plus 1 year"
+  ExpiresByType application/font-woff "access plus 1 year"
+  ExpiresByType application/font-woff2 "access plus 1 year"
+  
+  # HTML
+  ExpiresByType text/html "access plus 0 seconds"
+</IfModule>
+
+# Security Headers
+<IfModule mod_headers.c>
+  # Prevent MIME type sniffing
+  Header set X-Content-Type-Options "nosniff"
+  
+  # Prevent clickjacking
+  Header set X-Frame-Options "SAMEORIGIN"
+  
+  # XSS Protection
+  Header set X-XSS-Protection "1; mode=block"
+  
+  # Referrer Policy
+  Header set Referrer-Policy "strict-origin-when-cross-origin"
+</IfModule>
+
+# Disable directory browsing
+Options -Indexes
+
+# Protect .htaccess file
+<Files .htaccess>
+  Order allow,deny
+  Deny from all
+</Files>
+
+# Protect environment files (if any)
+<FilesMatch "^\.env">
+  Order allow,deny
+  Deny from all
+</FilesMatch>
+
+# Force HTTPS (if you have SSL certificate)
+# Uncomment these lines if you have custom domain with SSL
+# <IfModule mod_rewrite.c>
+#   RewriteCond %{HTTPS} off
+#   RewriteRule ^(.*)$ https://%{HTTP_HOST}%{REQUEST_URI} [L,R=301]
+# </IfModule>

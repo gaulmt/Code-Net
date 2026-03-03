@@ -1,256 +1,386 @@
-# 🌐 Deploy lên InfinityFree Hosting
+# 🚀 Deploy Code Net lên InfinityFree
 
-## ⚠️ Lưu ý quan trọng
+## ⚠️ Lưu Ý Quan Trọng
 
-InfinityFree là hosting PHP/HTML tĩnh, **KHÔNG** hỗ trợ Node.js/React trực tiếp.
+InfinityFree là free hosting với một số giới hạn:
+- ❌ **Không hỗ trợ Node.js backend** (server.js không chạy được)
+- ✅ Chỉ hỗ trợ static files (HTML, CSS, JS)
+- ✅ Có thể host React build (client/dist)
+- ❌ Không có WebSocket support
+- ⚠️ Có giới hạn CPU và bandwidth
 
-Bạn cần **build** project thành static files trước, rồi upload.
+**Giải pháp**: Deploy frontend lên InfinityFree, backend lên Railway/Render (free)
 
 ---
 
-## 📦 Bước 1: Build project
+## 📋 Chuẩn Bị
 
-### Trên máy local:
+### 1. Tài Khoản InfinityFree
+- Đăng ký tại: https://infinityfree.net
+- Tạo account mới
+- Lưu thông tin FTP
+
+### 2. Backend Riêng (Bắt Buộc)
+Backend phải deploy riêng vì InfinityFree không hỗ trợ Node.js:
+- **Railway** (khuyên dùng): https://railway.app
+- **Render**: https://render.com
+- **Glitch**: https://glitch.com
+
+---
+
+## 🔧 Bước 1: Deploy Backend (Railway)
+
+### A. Tạo Tài Khoản Railway
+1. Vào https://railway.app
+2. Sign up with GitHub
+3. Verify email
+
+### B. Deploy Backend
+1. **New Project** → **Deploy from GitHub repo**
+2. Connect GitHub repo của bạn
+3. Railway sẽ tự detect Node.js
+
+### C. Thêm Environment Variables
+Trong Railway dashboard:
+```
+GMAIL_USER=your-email@gmail.com
+GMAIL_APP_PASSWORD=xxxx-xxxx-xxxx-xxxx
+PORT=3001
+```
+
+### D. Lấy Backend URL
+- Railway sẽ generate URL: `https://your-app.railway.app`
+- Copy URL này để dùng ở bước sau
+
+---
+
+## 🔧 Bước 2: Cấu Hình Frontend
+
+### A. Update Backend URL
+
+**File cần sửa**: Tìm nơi gọi API OTP trong code
+
+Thường ở `client/src/App.jsx` hoặc component xử lý signup:
+
+```javascript
+// TÌM dòng này:
+const response = await fetch('http://localhost:3001/api/send-otp', {
+
+// THAY BẰNG:
+const response = await fetch('https://your-app.railway.app/api/send-otp', {
+```
+
+### B. Update CORS trong Backend
+
+**File**: `server.js`
+
+```javascript
+const cors = require('cors');
+
+app.use(cors({
+  origin: [
+    'http://localhost:5173',
+    'https://your-infinityfree-domain.infinityfreeapp.com',
+    'http://your-custom-domain.com' // nếu có
+  ],
+  credentials: true
+}));
+```
+
+### C. Build Frontend
 
 ```bash
-# Vào thư mục client
 cd client
-
-# Install dependencies (nếu chưa)
 npm install
-
-# Build project
 npm run build
 ```
 
-Sau khi build xong, bạn sẽ có folder `client/dist/` chứa static files.
+Folder `client/dist` sẽ chứa files cần upload.
 
 ---
 
-## 📁 Bước 2: Chuẩn bị files upload
+## 🔧 Bước 3: Upload lên InfinityFree
 
-### Files cần upload (trong folder `client/dist/`):
+### Option A: FTP Upload (Khuyên dùng)
+
+#### 1. Download FTP Client
+- **FileZilla**: https://filezilla-project.org/download.php?type=client
+- Hoặc **WinSCP** (Windows): https://winscp.net
+
+#### 2. Kết Nối FTP
+Trong InfinityFree Control Panel:
+- Vào **FTP Details**
+- Copy thông tin:
+  - FTP Hostname: `ftpupload.net`
+  - FTP Username: `epiz_xxxxx`
+  - FTP Password: `your_password`
+
+Trong FileZilla:
+- Host: `ftpupload.net`
+- Username: `epiz_xxxxx`
+- Password: `your_password`
+- Port: `21`
+- Click **Quickconnect**
+
+#### 3. Upload Files
+1. Trong FileZilla, navigate đến folder `htdocs` (bên phải)
+2. Xóa tất cả files mặc định trong `htdocs`
+3. Upload tất cả files từ `client/dist` vào `htdocs`
+
+**Cấu trúc sau khi upload**:
 ```
-dist/
+htdocs/
 ├── index.html
 ├── assets/
 │   ├── index-xxxxx.js
-│   └── index-xxxxx.css
-└── (các file khác)
+│   ├── index-xxxxx.css
+│   └── ...
+└── logo.jpg (và các files public khác)
 ```
 
-### ⚠️ Vấn đề với InfinityFree:
+### Option B: File Manager (Chậm hơn)
 
-1. **File size limit**: 10MB/file
-2. **Upload limit**: Chậm, dễ timeout
-3. **No Node.js**: Không chạy được server-side
-4. **No rewrites**: React Router sẽ bị lỗi 404
-
----
-
-## 🚀 Bước 3: Upload lên InfinityFree
-
-### Cách 1: File Manager (Không khuyến khích)
-
-1. Login vào InfinityFree control panel
-2. Vào File Manager
-3. Vào folder `htdocs/`
-4. Upload tất cả files từ `client/dist/`
-5. Đợi upload xong (có thể lâu)
-
-### Cách 2: FTP (Khuyến khích hơn)
-
-1. Download FileZilla: https://filezilla-project.org/
-2. Lấy FTP credentials từ InfinityFree
-3. Connect qua FTP
-4. Upload folder `dist/` vào `htdocs/`
+1. Vào InfinityFree Control Panel
+2. Click **Online File Manager**
+3. Navigate đến `htdocs`
+4. Upload từng file từ `client/dist`
 
 ---
 
-## 🔧 Bước 4: Cấu hình .htaccess
+## 🔧 Bước 4: Cấu Hình .htaccess (Quan Trọng!)
 
-Tạo file `.htaccess` trong `htdocs/`:
+InfinityFree cần `.htaccess` để SPA routing hoạt động.
+
+**Tạo file `.htaccess`** trong `htdocs`:
 
 ```apache
 # Enable Rewrite Engine
-RewriteEngine On
-
-# Redirect all requests to index.html
-RewriteCond %{REQUEST_FILENAME} !-f
-RewriteCond %{REQUEST_FILENAME} !-d
-RewriteRule ^(.*)$ /index.html [L]
-
-# Enable CORS
-<IfModule mod_headers.c>
-    Header set Access-Control-Allow-Origin "*"
+<IfModule mod_rewrite.c>
+  RewriteEngine On
+  RewriteBase /
+  
+  # Redirect all requests to index.html for SPA routing
+  RewriteRule ^index\.html$ - [L]
+  RewriteCond %{REQUEST_FILENAME} !-f
+  RewriteCond %{REQUEST_FILENAME} !-d
+  RewriteRule . /index.html [L]
 </IfModule>
 
-# Compress files
+# Compression
 <IfModule mod_deflate.c>
-    AddOutputFilterByType DEFLATE text/html text/plain text/xml text/css text/javascript application/javascript
+  AddOutputFilterByType DEFLATE text/html text/plain text/xml text/css text/javascript application/javascript
 </IfModule>
 
-# Cache static files
+# Browser Caching
 <IfModule mod_expires.c>
-    ExpiresActive On
-    ExpiresByType image/jpg "access plus 1 year"
-    ExpiresByType image/jpeg "access plus 1 year"
-    ExpiresByType image/gif "access plus 1 year"
-    ExpiresByType image/png "access plus 1 year"
-    ExpiresByType text/css "access plus 1 month"
-    ExpiresByType application/javascript "access plus 1 month"
+  ExpiresActive On
+  ExpiresByType image/jpg "access plus 1 year"
+  ExpiresByType image/jpeg "access plus 1 year"
+  ExpiresByType image/gif "access plus 1 year"
+  ExpiresByType image/png "access plus 1 year"
+  ExpiresByType text/css "access plus 1 month"
+  ExpiresByType application/javascript "access plus 1 month"
+</IfModule>
+
+# Security Headers
+<IfModule mod_headers.c>
+  Header set X-Content-Type-Options "nosniff"
+  Header set X-Frame-Options "SAMEORIGIN"
+  Header set X-XSS-Protection "1; mode=block"
 </IfModule>
 ```
 
----
-
-## ⚠️ Vấn đề sẽ gặp với InfinityFree
-
-### 1. File size quá lớn
-**Lỗi:** "File too large"
-
-**Giải pháp:**
-- File `index.js` của bạn là 702KB (gzipped 165KB)
-- InfinityFree limit 10MB → OK
-- Nhưng upload có thể timeout
-
-### 2. Upload timeout
-**Lỗi:** "Upload failed: Unexpected token..."
-
-**Giải pháp:**
-- Upload từng file nhỏ
-- Dùng FTP thay vì File Manager
-- Upload vào lúc ít người dùng (đêm)
-
-### 3. React Router không hoạt động
-**Lỗi:** 404 khi refresh page
-
-**Giải pháp:**
-- Dùng `.htaccess` như trên
-- Hoặc dùng Hash Router thay vì Browser Router
-
-### 4. Firebase không hoạt động
-**Lỗi:** CORS, Authentication errors
-
-**Giải pháp:**
-- Add domain InfinityFree vào Firebase Authorized domains
-- VD: `yoursite.infinityfreeapp.com`
+**Upload file `.htaccess`** vào `htdocs` qua FTP.
 
 ---
 
-## 🎯 Khuyến nghị: KHÔNG nên dùng InfinityFree
+## 🔧 Bước 5: Cấu Hình Environment Variables
 
-### Lý do:
+InfinityFree không hỗ trợ environment variables như Vercel. Bạn cần:
 
-1. **Quá chậm** - Upload timeout liên tục
-2. **Không ổn định** - Down thường xuyên
-3. **Giới hạn nhiều** - Bandwidth, file size, CPU
-4. **Không hỗ trợ** - Không có support tốt
-5. **Ads bắt buộc** - Free plan có ads
+### Option A: Build với Environment Variables
 
-### Nên dùng:
+Trước khi build, set environment variables:
 
-1. **Vercel** ⭐⭐⭐⭐⭐
-   - Free, unlimited bandwidth
-   - Auto deploy từ GitHub
-   - Hỗ trợ React/Vite native
-   - SSL miễn phí
-   - Deploy trong 5 phút
+**Windows (PowerShell)**:
+```powershell
+$env:VITE_FIREBASE_API_KEY="your_key"
+$env:VITE_FIREBASE_AUTH_DOMAIN="your_domain"
+# ... set tất cả các biến
 
-2. **Netlify** ⭐⭐⭐⭐
-   - Tương tự Vercel
-   - Drag & drop build folder
-   - Free tier tốt
+cd client
+npm run build
+```
 
-3. **Firebase Hosting** ⭐⭐⭐⭐
-   - Cùng ecosystem
-   - Tích hợp tốt với Firebase
-   - Free tier 10GB/month
+**Linux/Mac**:
+```bash
+export VITE_FIREBASE_API_KEY="your_key"
+export VITE_FIREBASE_AUTH_DOMAIN="your_domain"
+# ... set tất cả các biến
+
+cd client
+npm run build
+```
+
+### Option B: Hardcode (Không khuyên dùng cho production)
+
+Tạo file `client/src/config.js`:
+```javascript
+export const firebaseConfig = {
+  apiKey: "your_api_key",
+  authDomain: "your_domain",
+  databaseURL: "your_url",
+  projectId: "your_project_id",
+  storageBucket: "your_bucket",
+  messagingSenderId: "your_sender_id",
+  appId: "your_app_id"
+};
+```
+
+Update `client/src/firebase.js` để import từ config.js.
 
 ---
 
-## 🚀 Hướng dẫn deploy lên Vercel (5 phút)
+## 🧪 Bước 6: Test Production
 
-### Bước 1: Push lên GitHub
+### 1. Truy Cập Site
+URL của bạn: `https://your-subdomain.infinityfreeapp.com`
+
+### 2. Test Features
+- [ ] Homepage load
+- [ ] Đăng ký tài khoản
+- [ ] Nhận OTP (check backend Railway)
+- [ ] Xác minh OTP
+- [ ] Đăng nhập
+- [ ] Tạo project
+- [ ] Edit code
+- [ ] Sync code (có thể bị giới hạn do không có WebSocket)
+
+### 3. Check Console
+- Mở DevTools (F12)
+- Check Console tab
+- Không có lỗi CORS
+- Không có lỗi 404
+
+---
+
+## ⚠️ Giới Hạn InfinityFree
+
+### 1. Real-time Sync Có Thể Không Hoạt Động
+- InfinityFree không hỗ trợ WebSocket
+- Firebase Realtime Database có thể bị giới hạn
+- **Giải pháp**: Dùng Firebase polling thay vì WebSocket
+
+### 2. CPU Limits
+- InfinityFree giới hạn CPU usage
+- Site có thể bị suspend nếu vượt quá
+- **Giải pháp**: Optimize code, reduce requests
+
+### 3. Bandwidth Limits
+- Free tier có giới hạn bandwidth
+- **Giải pháp**: Optimize images, enable compression
+
+### 4. No HTTPS on Free Subdomain
+- HTTPS chỉ có với custom domain
+- **Giải pháp**: Upgrade hoặc dùng custom domain
+
+---
+
+## 🔧 Troubleshooting
+
+### Lỗi: "404 Not Found" khi refresh
+→ Check file `.htaccess` đã upload chưa
+
+### Lỗi: "CORS error"
+→ Update CORS origin trong `server.js` với InfinityFree URL
+
+### Lỗi: "Firebase not initialized"
+→ Check environment variables trong build
+
+### Lỗi: "OTP not sending"
+→ Check Railway backend có running không
+
+### Site bị suspend
+→ Vượt quá CPU limit, cần optimize hoặc upgrade
+
+---
+
+## 💡 Khuyến Nghị
+
+### Nếu Muốn Free Hosting Tốt Hơn:
+
+1. **Vercel** (Khuyên dùng nhất):
+   - ✅ Free tier tốt
+   - ✅ HTTPS miễn phí
+   - ✅ Auto deploy from GitHub
+   - ✅ Fast CDN
+   - ✅ No CPU limits
+
+2. **Netlify**:
+   - ✅ Tương tự Vercel
+   - ✅ Free tier tốt
+   - ✅ Easy setup
+
+3. **GitHub Pages**:
+   - ✅ Free
+   - ✅ HTTPS
+   - ❌ Chỉ static sites
+
+### Nếu Vẫn Muốn Dùng InfinityFree:
+- ✅ OK cho testing
+- ✅ OK cho portfolio nhỏ
+- ❌ Không khuyên cho production app
+- ❌ Không khuyên cho real-time features
+
+---
+
+## 📋 Checklist Deploy InfinityFree
+
+- [ ] Deploy backend lên Railway
+- [ ] Lấy backend URL
+- [ ] Update backend URL trong frontend code
+- [ ] Update CORS trong backend
+- [ ] Build frontend: `cd client && npm run build`
+- [ ] Upload `client/dist` lên InfinityFree `htdocs`
+- [ ] Upload file `.htaccess`
+- [ ] Test site
+- [ ] Test OTP
+- [ ] Test all features
+
+---
+
+## 🎯 Alternative: Deploy Toàn Bộ lên Vercel
+
+Nếu gặp khó khăn với InfinityFree, khuyên dùng Vercel:
 
 ```bash
-git init
-git add .
-git commit -m "Initial commit"
-git remote add origin https://github.com/YOUR_USERNAME/code-net.git
-git push -u origin main
+# Cài Vercel CLI
+npm install -g vercel
+
+# Deploy
+cd client
+vercel --prod
 ```
 
-### Bước 2: Deploy lên Vercel
-
-1. Vào: https://vercel.com
-2. Sign up with GitHub
-3. Import repository
-4. Configure:
-   - Root Directory: `client`
-   - Framework: Vite
-5. Deploy!
-
-### Bước 3: Done!
-
-App của bạn sẽ live tại: `https://your-app.vercel.app`
-
-**Chi tiết:** Xem file `QUICK_DEPLOY.md`
+**Lợi ích**:
+- ✅ Dễ hơn nhiều
+- ✅ Nhanh hơn
+- ✅ Ổn định hơn
+- ✅ HTTPS miễn phí
+- ✅ Auto deploy
 
 ---
 
-## 📊 So sánh
+## 📞 Support
 
-| Feature | InfinityFree | Vercel |
-|---------|-------------|--------|
-| React Support | ❌ (phải build) | ✅ Native |
-| Deploy Speed | 🐌 Chậm | ⚡ Nhanh |
-| Bandwidth | 🔴 Giới hạn | ✅ Unlimited |
-| SSL | ⚠️ Shared | ✅ Free |
-| Uptime | ⚠️ 95% | ✅ 99.9% |
-| Support | ❌ Không | ✅ Tốt |
-| Ads | ⚠️ Có | ✅ Không |
-| Price | Free | Free |
+- **InfinityFree Forum**: https://forum.infinityfree.net
+- **Railway Docs**: https://docs.railway.app
+- **Firebase Docs**: https://firebase.google.com/docs
 
 ---
 
-## 🔧 Nếu vẫn muốn dùng InfinityFree
+**Tổng thời gian**: 1-2 giờ (do upload FTP chậm)
+**Độ khó**: ⭐⭐⭐⭐ (Khó hơn Vercel)
+**Chi phí**: Free
 
-### Checklist:
-
-1. Build project: `npm run build`
-2. Zip folder `dist/`
-3. Upload qua FTP (không dùng File Manager)
-4. Tạo file `.htaccess`
-5. Add domain vào Firebase Authorized domains
-6. Test và cầu nguyện 🙏
-
-### Lưu ý:
-
-- Upload có thể mất 30-60 phút
-- Có thể phải upload lại nhiều lần
-- App có thể chạy chậm
-- Có thể bị down bất cứ lúc nào
-
----
-
-## ✅ Kết luận
-
-**Khuyến nghị mạnh:** Dùng Vercel thay vì InfinityFree
-
-**Lý do:**
-- Deploy nhanh hơn (5 phút vs 1 giờ)
-- Ổn định hơn (99.9% vs 95%)
-- Không giới hạn bandwidth
-- Auto deploy từ GitHub
-- Free SSL
-- Không có ads
-
-**Hướng dẫn deploy Vercel:** Xem `QUICK_DEPLOY.md`
-
----
-
-**Author:** Nguyễn Đăng Dương
-**Facebook:** https://www.facebook.com/share/18Fa25fAke/
-
-**Seriously, dùng Vercel đi! 🚀**
+**Lưu ý**: InfinityFree có nhiều giới hạn. Nếu có thể, khuyên dùng Vercel thay thế!

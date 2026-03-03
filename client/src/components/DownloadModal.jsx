@@ -1,10 +1,11 @@
 import { useState } from 'react';
-import { FiX, FiDownload, FiFile } from 'react-icons/fi';
+import { FiX, FiDownload, FiFile, FiFolder } from 'react-icons/fi';
 import './DownloadModal.css';
 
-function DownloadModal({ files, currentFile, onClose, onDownload }) {
+function DownloadModal({ files, currentFile, onClose, onDownload, onDownloadZip, projectName }) {
   const [selectedFiles, setSelectedFiles] = useState([currentFile]);
   const [downloadAll, setDownloadAll] = useState(false);
+  const [downloadMode, setDownloadMode] = useState('individual'); // 'individual' or 'zip'
 
   const toggleFile = (fileName) => {
     if (selectedFiles.includes(fileName)) {
@@ -28,7 +29,18 @@ function DownloadModal({ files, currentFile, onClose, onDownload }) {
       alert('Vui lòng chọn ít nhất 1 file');
       return;
     }
-    onDownload(selectedFiles);
+    
+    if (downloadMode === 'zip') {
+      // Download as ZIP
+      if (onDownloadZip) {
+        onDownloadZip(selectedFiles);
+      } else {
+        alert('Tính năng download ZIP cần cài đặt thư viện jszip. Xem file INSTALL_JSZIP.md');
+      }
+    } else {
+      // Download individual files
+      onDownload(selectedFiles);
+    }
     onClose();
   };
 
@@ -43,6 +55,21 @@ function DownloadModal({ files, currentFile, onClose, onDownload }) {
         </div>
 
         <div className="download-modal-content">
+          <div className="download-mode-selector">
+            <button 
+              className={`mode-btn ${downloadMode === 'individual' ? 'active' : ''}`}
+              onClick={() => setDownloadMode('individual')}
+            >
+              <FiFile /> Tải từng file
+            </button>
+            <button 
+              className={`mode-btn ${downloadMode === 'zip' ? 'active' : ''}`}
+              onClick={() => setDownloadMode('zip')}
+            >
+              <FiFolder /> Tải về ZIP
+            </button>
+          </div>
+
           <div className="download-option">
             <label className="download-checkbox">
               <input
@@ -50,7 +77,9 @@ function DownloadModal({ files, currentFile, onClose, onDownload }) {
                 checked={downloadAll}
                 onChange={toggleAll}
               />
-              <span className="checkbox-label">Tải tất cả files</span>
+              <span className="checkbox-label">
+                {downloadMode === 'zip' ? 'Chọn tất cả files' : 'Tải tất cả files'}
+              </span>
             </label>
           </div>
 
@@ -79,7 +108,7 @@ function DownloadModal({ files, currentFile, onClose, onDownload }) {
             Hủy
           </button>
           <button className="download-btn-modal" onClick={handleDownload}>
-            <FiDownload /> Tải xuống ({selectedFiles.length})
+            <FiDownload /> {downloadMode === 'zip' ? `Tải ZIP (${selectedFiles.length})` : `Tải xuống (${selectedFiles.length})`}
           </button>
         </div>
       </div>
