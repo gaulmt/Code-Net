@@ -69,6 +69,55 @@
   gap: 1rem;
 }
 
+/* Notification Bell in Editor */
+.editor-controls .notification-bell-container {
+  margin: 0;
+}
+
+.editor-controls .notification-bell-btn {
+  background: transparent;
+  border: none;
+  color: #cccccc;
+  padding: 0.4rem 0.6rem;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.editor-controls .notification-bell-btn:hover {
+  background: rgba(78, 205, 196, 0.1);
+  color: #4ECDC4;
+  transform: scale(1.05);
+}
+
+/* Friends Button */
+.friends-btn {
+  background: transparent;
+  border: none;
+  color: #cccccc;
+  padding: 0.4rem 0.6rem;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.3rem;
+}
+
+.friends-btn:hover {
+  background: rgba(78, 205, 196, 0.1);
+  color: #4ECDC4;
+  transform: scale(1.05);
+}
+
+.friends-btn:active {
+  transform: scale(0.95);
+}
+
 .read-only-badge {
   display: flex;
   align-items: center;

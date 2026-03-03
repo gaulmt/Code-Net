@@ -1,9 +1,9 @@
 import { useState, useEffect } from 'react';
 import { FiX, FiCopy, FiCheck, FiUserPlus, FiSearch } from 'react-icons/fi';
-import { getFriends, getUserStatus, searchUserByUsername, addFriend } from '../firebase';
+import { getFriends, getUserStatus, searchUserByUsername, sendFriendRequest, getUserProfile, sendProjectInvite } from '../firebase';
 import './InviteMembersModal.css';
 
-function InviteMembersModal({ roomId, userId, onClose }) {
+function InviteMembersModal({ roomId, userId, onClose, projectName, userProfile }) {
   const [friends, setFriends] = useState([]);
   const [friendsStatus, setFriendsStatus] = useState({});
   const [copied, setCopied] = useState(false);
@@ -74,14 +74,17 @@ function InviteMembersModal({ roomId, userId, onClose }) {
   const handleAddFriend = async (friendUserId, friendUsername) => {
     setAddingFriend(true);
     try {
-      await addFriend(userId, friendUserId, friendUsername);
-      alert(`Đã kết bạn với ${friendUsername}!`);
+      // Get current user profile
+      const userProfile = await getUserProfile(userId);
+      
+      // Send friend request instead of adding directly
+      await sendFriendRequest(userId, friendUserId, userProfile.username, userProfile.photoURL);
+      alert(`Đã gửi lời mời kết bạn đến ${friendUsername}!`);
       setSearchResult(null);
       setSearchQuery('');
-      await loadFriends(); // Reload friends list
     } catch (error) {
-      console.error('Error adding friend:', error);
-      alert('Lỗi khi kết bạn: ' + error.message);
+      console.error('Error sending friend request:', error);
+      alert('Lỗi khi gửi lời mời kết bạn: ' + error.message);
     } finally {
       setAddingFriend(false);
     }
@@ -93,11 +96,22 @@ function InviteMembersModal({ roomId, userId, onClose }) {
     setTimeout(() => setCopied(false), 2000);
   };
 
-  const handleInviteFriend = (friendId) => {
-    // In a real app, this would send an invitation
-    // For now, just copy the room code
-    handleCopyCode();
-    alert(`Đã copy mã phòng! Gửi cho bạn bè để họ tham gia.`);
+  const handleInviteFriend = async (friendId, friendUsername) => {
+    try {
+      // Send project invite notification
+      await sendProjectInvite(
+        roomId,
+        projectName || roomId,
+        userId,
+        userProfile?.username || 'Someone',
+        friendId
+      );
+      
+      alert(`Đã gửi lời mời vào project "${projectName || roomId}" cho ${friendUsername}!`);
+    } catch (error) {
+      console.error('Error sending project invite:', error);
+      alert('Lỗi khi gửi lời mời: ' + error.message);
+    }
   };
 
   return (
@@ -238,7 +252,7 @@ function InviteMembersModal({ roomId, userId, onClose }) {
                       </div>
                       <button 
                         className="invite-btn"
-                        onClick={() => handleInviteFriend(friend.id)}
+                        onClick={() => handleInviteFriend(friend.id, friend.username)}
                       >
                         <FiUserPlus /> Mời
                       </button>

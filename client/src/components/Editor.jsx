@@ -3,10 +3,12 @@ import MonacoEditor from '@monaco-editor/react';
 import { getFileContent, updateContent, updateCursor, getFiles } from '../socket';
 import InteractiveTerminal from './InteractiveTerminal';
 import DownloadModal from './DownloadModal';
-import { FiSave, FiDownload, FiSun, FiMoon } from 'react-icons/fi';
+import NotificationBell from './NotificationBell';
+import FriendsList from './FriendsList';
+import { FiSave, FiDownload, FiSun, FiMoon, FiUsers } from 'react-icons/fi';
 import './Editor.css';
 
-function Editor({ documentId, projectName, user, users, currentFile, theme: appTheme, onThemeChange }) {
+function Editor({ documentId, projectName, user, users, currentFile, theme: appTheme, onThemeChange, authUser, userProfile, onProjectJoin }) {
   const [content, setContent] = useState('');
   const [language, setLanguage] = useState('javascript');
   const [cursors, setCursors] = useState({});
@@ -19,6 +21,7 @@ function Editor({ documentId, projectName, user, users, currentFile, theme: appT
   const [saving, setSaving] = useState(false);
   const [showDownloadModal, setShowDownloadModal] = useState(false);
   const [allFiles, setAllFiles] = useState([]);
+  const [showFriendsList, setShowFriendsList] = useState(false);
   const editorRef = useRef(null);
   const decorationsRef = useRef([]);
   const isRemoteChange = useRef(false);
@@ -350,6 +353,26 @@ function Editor({ documentId, projectName, user, users, currentFile, theme: appT
           <span className="current-file">{currentFile}</span>
         </div>
         <div className="editor-controls">
+          {/* Notification Bell */}
+          {authUser && userProfile && (
+            <NotificationBell 
+              userId={authUser.uid}
+              userProfile={userProfile}
+              onProjectJoin={onProjectJoin}
+            />
+          )}
+          
+          {/* Friends List Button */}
+          {authUser && userProfile && (
+            <button 
+              className="friends-btn"
+              onClick={() => setShowFriendsList(true)}
+              title="Bạn bè"
+            >
+              <FiUsers size={20} />
+            </button>
+          )}
+          
           {!user?.permissions?.includes('write') && (
             <span className="read-only-badge">🔒 Chỉ đọc</span>
           )}
@@ -440,6 +463,18 @@ function Editor({ documentId, projectName, user, users, currentFile, theme: appT
           currentFile={currentFile}
           onClose={() => setShowDownloadModal(false)}
           onDownload={handleDownloadFiles}
+        />
+      )}
+      
+      {showFriendsList && authUser && userProfile && (
+        <FriendsList
+          userId={authUser.uid}
+          userProfile={userProfile}
+          onClose={() => setShowFriendsList(false)}
+          onSendMessage={(friendId) => {
+            console.log('Send message to:', friendId);
+            // TODO: Implement messaging
+          }}
         />
       )}
     </div>

@@ -1,5 +1,5 @@
 import { initializeApp } from 'firebase/app';
-import { getDatabase, ref, set, get, push } from 'firebase/database';
+import { getDatabase, ref, set, get, push, remove, onValue, onDisconnect } from 'firebase/database';
 import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, signInWithPopup, GoogleAuthProvider, signOut, updateProfile } from 'firebase/auth';
 
 const firebaseConfig = {
@@ -18,7 +18,71 @@ export const database = getDatabase(app);
 export const auth = getAuth(app);
 const googleProvider = new GoogleAuthProvider();
 
-// Email/Password Sign Up
+// Send OTP via backend API
+export const sendOTPEmail = async (email, name) => {
+  try {
+    const response = await fetch('http://localhost:3002/api/send-otp', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, name })
+    });
+    
+    const data = await response.json();
+    
+    if (!data.success) {
+      throw new Error(data.error || 'Failed to send OTP');
+    }
+    
+    // Save OTP to Firebase for verification
+    const otpRef = ref(database, `otp_pending/${email.replace(/[.@]/g, '_')}`);
+    await set(otpRef, {
+      otp: data.otp,
+      email: email,
+      expiryTime: Date.now() + (5 * 60 * 1000),
+      createdAt: Date.now()
+    });
+    
+    console.log('✅ OTP sent to:', email, '| OTP:', data.otp);
+    return data.otp;
+  } catch (error) {
+    console.error('❌ Error sending OTP:', error);
+    throw error;
+  }
+};
+
+// Verify OTP
+export const verifyOTP = async (email, otpCode) => {
+  const otpRef = ref(database, `otp_pending/${email.replace(/[.@]/g, '_')}`);
+  const snapshot = await get(otpRef);
+  
+  if (!snapshot.exists()) {
+    throw new Error('Mã OTP không tồn tại');
+  }
+  
+  const otpData = snapshot.val();
+  
+  // Check expiry
+  if (Date.now() > otpData.expiryTime) {
+    await remove(otpRef);
+    throw new Error('Mã OTP đã hết hạn (5 phút)');
+  }
+  
+  // Check match
+  if (otpData.otp !== otpCode.trim()) {
+    throw new Error('Mã OTP không đúng');
+  }
+  
+  // Clean up
+  await remove(otpRef);
+  return true;
+};
+
+// Resend OTP
+export const resendOTP = async (email, name) => {
+  return await sendOTPEmail(email, name);
+};
+
+// Email/Password Sign Up (after OTP verification)
 export const signUpUser = async (email, password, displayName) => {
   const userCredential = await createUserWithEmailAndPassword(auth, email, password);
   await updateProfile(userCredential.user, { displayName });
@@ -216,19 +280,11 @@ export const getUserRoleInProject = async (projectCode, userId) => {
 };
 
 // Friends System
-export const addFriend = async (userId, friendUserId, friendUsername) => {
+// Internal function - only called after accepting friend request
+const addFriend = async (userId, friendUserId, friendUsername) => {
   const friendRef = ref(database, `users/${userId}/friends/${friendUserId}`);
   await set(friendRef, {
     username: friendUsername,
-    addedAt: Date.now(),
-    status: 'accepted' // Can be: pending, accepted, blocked
-  });
-  
-  // Add reverse friendship
-  const reverseFriendRef = ref(database, `users/${friendUserId}/friends/${userId}`);
-  const userProfile = await getUserProfile(userId);
-  await set(reverseFriendRef, {
-    username: userProfile?.username || 'Unknown',
     addedAt: Date.now(),
     status: 'accepted'
   });
@@ -284,4 +340,276 @@ export const searchUserByUsername = async (username) => {
     }
   }
   return null;
+};
+
+
+// ==================== NOTIFICATION SYSTEM ====================
+
+// Create notification
+export const createNotification = async (userId, notificationData) => {
+  const notificationRef = push(ref(database, `users/${userId}/notifications`));
+  await set(notificationRef, {
+    ...notificationData,
+    id: notificationRef.key,
+    read: false,
+    createdAt: Date.now()
+  });
+  return notificationRef.key;
+};
+
+// Get user notifications
+export const getNotifications = async (userId) => {
+  const notificationsRef = ref(database, `users/${userId}/notifications`);
+  const snapshot = await get(notificationsRef);
+  if (snapshot.exists()) {
+    const notifications = [];
+    snapshot.forEach((child) => {
+      notifications.push({ id: child.key, ...child.val() });
+    });
+    return notifications.sort((a, b) => b.createdAt - a.createdAt);
+  }
+  return [];
+};
+
+// Subscribe to notifications (real-time)
+export const subscribeToNotifications = (userId, callback) => {
+  const notificationsRef = ref(database, `users/${userId}/notifications`);
+  return onValue(notificationsRef, (snapshot) => {
+    const notifications = [];
+    if (snapshot.exists()) {
+      snapshot.forEach((child) => {
+        notifications.push({ id: child.key, ...child.val() });
+      });
+    }
+    callback(notifications.sort((a, b) => b.createdAt - a.createdAt));
+  });
+};
+
+// Mark notification as read
+export const markNotificationAsRead = async (userId, notificationId) => {
+  const notificationRef = ref(database, `users/${userId}/notifications/${notificationId}/read`);
+  await set(notificationRef, true);
+};
+
+// Mark all notifications as read
+export const markAllNotificationsAsRead = async (userId) => {
+  const notificationsRef = ref(database, `users/${userId}/notifications`);
+  const snapshot = await get(notificationsRef);
+  if (snapshot.exists()) {
+    const updates = {};
+    snapshot.forEach((child) => {
+      updates[`${child.key}/read`] = true;
+    });
+    await set(notificationsRef, updates);
+  }
+};
+
+// Delete notification
+export const deleteNotification = async (userId, notificationId) => {
+  const notificationRef = ref(database, `users/${userId}/notifications/${notificationId}`);
+  await remove(notificationRef);
+};
+
+// Get unread notification count
+export const getUnreadNotificationCount = async (userId) => {
+  const notifications = await getNotifications(userId);
+  return notifications.filter(n => !n.read).length;
+};
+
+// ==================== FRIEND SYSTEM ====================
+
+// Send friend request
+export const sendFriendRequest = async (fromUserId, toUserId, fromUsername, fromAvatar) => {
+  // Create friend request
+  const requestRef = push(ref(database, 'friendRequests'));
+  await set(requestRef, {
+    from: fromUserId,
+    to: toUserId,
+    status: 'pending',
+    createdAt: Date.now()
+  });
+
+  // Create notification for recipient
+  await createNotification(toUserId, {
+    type: 'friend_request',
+    from: fromUserId,
+    fromName: fromUsername,
+    fromAvatar: fromAvatar,
+    message: `${fromUsername} đã gửi lời mời kết bạn`,
+    data: { requestId: requestRef.key },
+    actionUrl: null
+  });
+
+  return requestRef.key;
+};
+
+// Accept friend request
+export const acceptFriendRequest = async (requestId, fromUserId, toUserId, toUsername, toAvatar) => {
+  // Update request status (use update instead of set to preserve existing fields)
+  const requestRef = ref(database, `friendRequests/${requestId}/status`);
+  await set(requestRef, 'accepted');
+  
+  const updatedAtRef = ref(database, `friendRequests/${requestId}/updatedAt`);
+  await set(updatedAtRef, Date.now());
+
+  // Add to both users' friend lists
+  await addFriend(fromUserId, toUserId, toUsername);
+  
+  // Get fromUser info
+  const fromProfile = await getUserProfile(fromUserId);
+  await addFriend(toUserId, fromUserId, fromProfile.username);
+
+  // Create notification for requester
+  await createNotification(fromUserId, {
+    type: 'friend_accepted',
+    from: toUserId,
+    fromName: toUsername,
+    fromAvatar: toAvatar,
+    message: `${toUsername} đã chấp nhận lời mời kết bạn`,
+    data: {},
+    actionUrl: null
+  });
+};
+
+// Reject friend request
+export const rejectFriendRequest = async (requestId) => {
+  const statusRef = ref(database, `friendRequests/${requestId}/status`);
+  await set(statusRef, 'rejected');
+  
+  const updatedAtRef = ref(database, `friendRequests/${requestId}/updatedAt`);
+  await set(updatedAtRef, Date.now());
+};
+
+// Get friend requests for user
+export const getFriendRequests = async (userId) => {
+  const requestsRef = ref(database, 'friendRequests');
+  const snapshot = await get(requestsRef);
+  const requests = [];
+  
+  if (snapshot.exists()) {
+    snapshot.forEach((child) => {
+      const request = child.val();
+      if (request.to === userId && request.status === 'pending') {
+        requests.push({ id: child.key, ...request });
+      }
+    });
+  }
+  
+  return requests;
+};
+
+// ==================== PROJECT INVITE SYSTEM ====================
+
+// Send project invite
+export const sendProjectInvite = async (projectId, projectName, fromUserId, fromUsername, toUserId) => {
+  // Create invite
+  const inviteRef = push(ref(database, 'projectInvites'));
+  await set(inviteRef, {
+    projectId,
+    projectName,
+    from: fromUserId,
+    fromName: fromUsername,
+    to: toUserId,
+    status: 'pending',
+    createdAt: Date.now()
+  });
+
+  // Get fromUser profile
+  const fromProfile = await getUserProfile(fromUserId);
+
+  // Create notification
+  await createNotification(toUserId, {
+    type: 'project_invite',
+    from: fromUserId,
+    fromName: fromUsername,
+    fromAvatar: fromProfile.photoURL,
+    message: `${fromUsername} đã mời bạn vào project "${projectName}"`,
+    data: { 
+      inviteId: inviteRef.key,
+      projectId,
+      projectName 
+    },
+    actionUrl: null
+  });
+
+  return inviteRef.key;
+};
+
+// Accept project invite
+export const acceptProjectInvite = async (inviteId, projectId, userId, username) => {
+  // Update invite status
+  const inviteRef = ref(database, `projectInvites/${inviteId}/status`);
+  await set(inviteRef, 'accepted');
+
+  // Add user to project
+  await saveProjectMember(projectId, userId, username, 'member');
+  await saveUserProject(userId, projectId, projectId, 'member');
+
+  return projectId;
+};
+
+// Reject project invite
+export const rejectProjectInvite = async (inviteId) => {
+  const inviteRef = ref(database, `projectInvites/${inviteId}/status`);
+  await set(inviteRef, 'rejected');
+};
+
+// ==================== GLOBAL CHAT ====================
+
+// Send global chat message
+export const sendGlobalChatMessage = async (userId, username, avatar, message) => {
+  const messageRef = push(ref(database, 'globalChat/messages'));
+  await set(messageRef, {
+    userId,
+    username,
+    avatar,
+    message,
+    type: 'text',
+    timestamp: Date.now(),
+    reactions: {}
+  });
+  return messageRef.key;
+};
+
+// Get global chat messages
+export const getGlobalChatMessages = async (limit = 50) => {
+  const messagesRef = ref(database, 'globalChat/messages');
+  const snapshot = await get(messagesRef);
+  const messages = [];
+  
+  if (snapshot.exists()) {
+    snapshot.forEach((child) => {
+      messages.push({ id: child.key, ...child.val() });
+    });
+  }
+  
+  return messages
+    .sort((a, b) => b.timestamp - a.timestamp)
+    .slice(0, limit)
+    .reverse();
+};
+
+// Subscribe to global chat (real-time)
+export const subscribeToGlobalChat = (callback, limit = 50) => {
+  const messagesRef = ref(database, 'globalChat/messages');
+  return onValue(messagesRef, (snapshot) => {
+    const messages = [];
+    if (snapshot.exists()) {
+      snapshot.forEach((child) => {
+        messages.push({ id: child.key, ...child.val() });
+      });
+    }
+    callback(
+      messages
+        .sort((a, b) => b.timestamp - a.timestamp)
+        .slice(0, limit)
+        .reverse()
+    );
+  });
+};
+
+// Add reaction to message
+export const addReactionToMessage = async (messageId, userId, emoji) => {
+  const reactionRef = ref(database, `globalChat/messages/${messageId}/reactions/${userId}`);
+  await set(reactionRef, emoji);
 };

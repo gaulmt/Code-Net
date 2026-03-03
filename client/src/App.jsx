@@ -7,6 +7,7 @@ import Landing from './components/Landing';
 import Profile from './components/Profile';
 import Toast from './components/Toast';
 import ConfirmDialog from './components/ConfirmDialog';
+import NotificationBell from './components/NotificationBell';
 import { joinDocument } from './socket';
 import { 
   auth, 
@@ -24,7 +25,10 @@ import {
   createProjectMetadata,
   updateProjectActivity,
   saveProjectMember,
-  getUserRoleInProject
+  getUserRoleInProject,
+  sendOTPEmail,
+  verifyOTP,
+  resendOTP
 } from './firebase';
 import { onAuthStateChanged } from 'firebase/auth';
 import './App.css';
@@ -80,6 +84,44 @@ function App() {
     return () => unsubscribe();
   }, []);
 
+  // Restore project state on reload
+  useEffect(() => {
+    if (authUser && userProfile && !documentId) {
+      const savedProjectId = localStorage.getItem('currentProjectId');
+      const savedProjectName = localStorage.getItem('currentProjectName');
+      const savedUserData = localStorage.getItem('currentUserData');
+      
+      if (savedProjectId && savedUserData) {
+        console.log('🔄 Restoring project state...', { savedProjectId, savedProjectName });
+        try {
+          const userData = JSON.parse(savedUserData);
+          setUser(userData);
+          setDocumentId(savedProjectId);
+          setProjectName(savedProjectName || savedProjectId);
+          setShowLanding(false);
+          
+          // Rejoin the project
+          joinDocument(savedProjectId, userData, {
+            onUsersUpdate: (userList) => {
+              setUsers(userList);
+              const updatedCurrentUser = userList.find(u => u.id === userData.id);
+              if (updatedCurrentUser) {
+                setUser(updatedCurrentUser);
+              }
+            }
+          });
+          
+          showToast('Đã khôi phục project!', 'success');
+        } catch (error) {
+          console.error('Error restoring project:', error);
+          localStorage.removeItem('currentProjectId');
+          localStorage.removeItem('currentProjectName');
+          localStorage.removeItem('currentUserData');
+        }
+      }
+    }
+  }, [authUser, userProfile, documentId]);
+
   const handleLogin = async (email, password) => {
     try {
       await signInUser(email, password);
@@ -91,10 +133,69 @@ function App() {
 
   const handleSignup = async (username, email, password) => {
     try {
-      await signUpUser(email, password, username);
-      showToast('Đăng ký thành công!', 'success');
+      console.log('🔵 Step 1: Checking username availability...', username);
+      // Step 1: Check username availability
+      const isAvailable = await checkUsernameAvailable(username);
+      console.log('✅ Username available:', isAvailable);
+      
+      if (!isAvailable) {
+        showToast('Tên người dùng "' + username + '" đã tồn tại. Vui lòng chọn tên khác.', 'error');
+        return { success: false };
+      }
+      
+      console.log('🔵 Step 2: Sending OTP to email...', email);
+      // Step 2: Send OTP
+      await sendOTPEmail(email, username);
+      console.log('✅ OTP sent successfully!');
+      
+      showToast('Mã OTP đã được gửi đến email! Vui lòng kiểm tra hộp thư.', 'success');
+      return { success: true, needsOTP: true };
+      
     } catch (error) {
-      showToast('Lỗi đăng ký: ' + error.message, 'error');
+      console.error('❌ Error in handleSignup:', error);
+      if (error.code === 'auth/email-already-in-use') {
+        showToast('Email "' + email + '" đã được đăng ký! Vui lòng đăng nhập hoặc dùng email khác.', 'error');
+      } else if (error.code === 'auth/weak-password') {
+        showToast('Mật khẩu quá yếu! Cần ít nhất 6 ký tự.', 'error');
+      } else if (error.code === 'auth/invalid-email') {
+        showToast('Email không hợp lệ!', 'error');
+      } else {
+        showToast('Lỗi: ' + error.message, 'error');
+      }
+      return { success: false };
+    }
+  };
+  
+  const handleVerifyOTP = async (email, otpCode, username, password) => {
+    try {
+      // Verify OTP
+      await verifyOTP(email, otpCode);
+      
+      // Create Firebase account
+      const user = await signUpUser(email, password, username);
+      
+      // Create user profile
+      await saveUserProfile(user.uid, username);
+      
+      // Load profile immediately after creation
+      const profile = await getUserProfile(user.uid);
+      setUserProfile(profile);
+      
+      showToast('Đăng ký thành công!', 'success');
+      return { success: true };
+      
+    } catch (error) {
+      showToast('Lỗi: ' + error.message, 'error');
+      return { success: false };
+    }
+  };
+  
+  const handleResendOTP = async (email, username) => {
+    try {
+      await resendOTP(email, username);
+      showToast('Mã OTP mới đã được gửi!', 'success');
+    } catch (error) {
+      showToast('Lỗi: ' + error.message, 'error');
     }
   };
 
@@ -106,32 +207,16 @@ function App() {
       if (profile) {
         setUserProfile(profile);
         showToast(`Chào mừng trở lại ${profile.username}!`, 'success');
+      } else {
+        // Create profile automatically using Google display name
+        const username = user.displayName?.replace(/\s+/g, '_').toLowerCase() || `user_${user.uid.substring(0, 6)}`;
+        await saveUserProfile(user.uid, username, user.photoURL);
+        const newProfile = await getUserProfile(user.uid);
+        setUserProfile(newProfile);
+        showToast(`Chào mừng ${username}!`, 'success');
       }
-      // If no profile, Landing will show username setup
     } catch (error) {
       showToast('Lỗi đăng nhập Google: ' + error.message, 'error');
-    }
-  };
-
-  const handleUsernameSet = async (username) => {
-    try {
-      // Check if username is available
-      const isAvailable = await checkUsernameAvailable(username);
-      if (!isAvailable) {
-        showToast('Tên người dùng đã tồn tại. Vui lòng chọn tên khác.', 'warning');
-        return;
-      }
-
-      // Save user profile
-      await saveUserProfile(authUser.uid, username);
-      
-      // Reload profile
-      const profile = await getUserProfile(authUser.uid);
-      setUserProfile(profile);
-      
-      showToast(`Chào mừng ${username}!`, 'success');
-    } catch (error) {
-      showToast('Lỗi: ' + error.message, 'error');
     }
   };
 
@@ -156,6 +241,12 @@ function App() {
       setAuthUser(null);
       setUserProfile(null);
       setShowLanding(true);
+      
+      // Clear project state from localStorage
+      localStorage.removeItem('currentProjectId');
+      localStorage.removeItem('currentProjectName');
+      localStorage.removeItem('currentUserData');
+      
       showToast('Đăng xuất thành công!', 'success');
     } catch (error) {
       showToast('Lỗi đăng xuất: ' + error.message, 'error');
@@ -190,6 +281,11 @@ function App() {
     setDocumentId(shortCode);
     setProjectName(projectName || `Project ${shortCode}`);
     setShowLanding(false);
+    
+    // Save to localStorage for reload persistence
+    localStorage.setItem('currentProjectId', shortCode);
+    localStorage.setItem('currentProjectName', projectName || `Project ${shortCode}`);
+    localStorage.setItem('currentUserData', JSON.stringify(newUser));
     
     // Create project metadata and save to user profile
     console.log('📝 Creating project...', { shortCode, userId, username, projectName });
@@ -310,6 +406,11 @@ function App() {
     setProjectName(savedProjectName || projectId); // Use saved name or fallback to projectId
     setShowLanding(false);
     
+    // Save to localStorage for reload persistence
+    localStorage.setItem('currentProjectId', projectId);
+    localStorage.setItem('currentProjectName', savedProjectName || projectId);
+    localStorage.setItem('currentUserData', JSON.stringify(newUser));
+    
     // Save/update member info and last accessed time
     try {
       await updateProjectAccess(userId, projectId);
@@ -381,12 +482,13 @@ function App() {
           onJoinProject={handleJoinProject}
           onLogin={handleLogin}
           onSignup={handleSignup}
+          onVerifyOTP={handleVerifyOTP}
+          onResendOTP={handleResendOTP}
           onGoogleSignIn={handleGoogleSignIn}
           onLogout={handleLogout}
           authUser={authUser}
           userProfile={userProfile}
           authLoading={authLoading}
-          onUsernameSet={handleUsernameSet}
           onOpenProfile={() => setShowProfile(true)}
         />
         {showProfile && userProfile && (
@@ -416,7 +518,14 @@ function App() {
     <>
       <div className={`app theme-${theme}`}>
         <div className="resizable-panel" style={{ width: `${userPanelWidth}px` }}>
-          <UserPanel users={users} currentUser={user} roomId={documentId} userProfile={userProfile} authUser={authUser} />
+          <UserPanel 
+            users={users} 
+            currentUser={user} 
+            roomId={documentId} 
+            projectName={projectName}
+            userProfile={userProfile} 
+            authUser={authUser} 
+          />
           <div 
             className="resize-handle resize-handle-right"
             onMouseDown={(e) => handleResize(e, 'userPanel')}
@@ -432,7 +541,18 @@ function App() {
         </div>
 
         <div className="main-content" style={{ flex: showSidebar ? '1' : '1 1 auto' }}>
-          <Editor documentId={documentId} projectName={projectName} user={user} users={users} currentFile={currentFile} theme={theme} onThemeChange={setTheme} />
+          <Editor 
+            documentId={documentId} 
+            projectName={projectName} 
+            user={user} 
+            users={users} 
+            currentFile={currentFile} 
+            theme={theme} 
+            onThemeChange={setTheme}
+            authUser={authUser}
+            userProfile={userProfile}
+            onProjectJoin={handleJoinProject}
+          />
         </div>
 
         {showSidebar && (

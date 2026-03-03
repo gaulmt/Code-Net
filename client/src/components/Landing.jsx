@@ -1,20 +1,31 @@
 import { useState, useEffect, useRef } from 'react';
-import { FiCode, FiUsers, FiZap, FiGlobe, FiArrowRight, FiCopy, FiCheck, FiLogIn, FiUserPlus, FiFolder } from 'react-icons/fi';
+import { FiCode, FiUsers, FiZap, FiGlobe, FiArrowRight, FiCopy, FiCheck, FiLogIn, FiUserPlus, FiFolder, FiEye, FiEyeOff } from 'react-icons/fi';
 import { FcGoogle } from 'react-icons/fc';
 import ParticleText from './ParticleText';
 import ProjectsManager from './ProjectsManager';
+import NotificationBell from './NotificationBell';
+import FriendsList from './FriendsList';
 import './Landing.css';
 
-function Landing({ onCreateProject, onJoinProject, onLogin, onSignup, onGoogleSignIn, onLogout, authUser, userProfile, onUsernameSet, onOpenProfile, authLoading }) {
-  const [view, setView] = useState('home'); // home, login, signup, create, join, projectCode, setUsername
+function Landing({ onCreateProject, onJoinProject, onLogin, onSignup, onVerifyOTP, onResendOTP, onGoogleSignIn, onLogout, authUser, userProfile, onOpenProfile, authLoading }) {
+  const [view, setView] = useState('home'); // home, login, signup, create, join, projectCode, otpVerification
   const [username, setUsername] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
   const [projectCode, setProjectCode] = useState('');
   const [generatedCode, setGeneratedCode] = useState('');
   const [copied, setCopied] = useState(false);
   const [usernameError, setUsernameError] = useState('');
   const [showProjects, setShowProjects] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [otpCode, setOtpCode] = useState(['', '', '', '', '', '']);
+  const [pendingSignup, setPendingSignup] = useState(null);
+  const [isLoading, setIsLoading] = useState(false);
+  const [otpError, setOtpError] = useState('');
+  const [showFriendsList, setShowFriendsList] = useState(false);
+  const otpInputRefs = useRef([]);
 
   // Expose openProfile to window for avatar click
   useEffect(() => {
@@ -83,12 +94,97 @@ function Landing({ onCreateProject, onJoinProject, onLogin, onSignup, onGoogleSi
     }
   };
 
-  const handleSignup = () => {
-    if (username.trim() && email.trim() && password.trim()) {
-      onSignup(username, email, password);
-      // Chuyển về home sau khi đăng ký
-      setTimeout(() => setView('home'), 500);
+  const handleSignup = async () => {
+    // Validation
+    if (!username.trim()) {
+      alert('Vui lòng nhập tên!');
+      return;
     }
+    if (!email.trim()) {
+      alert('Vui lòng nhập email!');
+      return;
+    }
+    if (!password.trim()) {
+      alert('Vui lòng nhập mật khẩu!');
+      return;
+    }
+    if (password.length < 6) {
+      alert('Mật khẩu phải có ít nhất 6 ký tự!');
+      return;
+    }
+    if (!confirmPassword.trim()) {
+      alert('Vui lòng nhập lại mật khẩu!');
+      return;
+    }
+    if (password !== confirmPassword) {
+      alert('Mật khẩu xác nhận không khớp!');
+      return;
+    }
+    
+    setIsLoading(true);
+    console.log('🔵 Calling onSignup...');
+    
+    try {
+      // Call signup - will send OTP
+      const result = await onSignup(username.trim(), email.trim(), password.trim());
+      console.log('✅ Signup result:', result);
+      
+      if (result && result.success && result.needsOTP) {
+        console.log('✅ Switching to OTP view...');
+        // Save pending signup data
+        setPendingSignup({ username: username.trim(), email: email.trim(), password: password.trim() });
+        // Show OTP screen
+        setView('otpVerification');
+      } else {
+        console.log('❌ Not switching to OTP view. Result:', result);
+      }
+    } finally {
+      setIsLoading(false);
+    }
+  };
+  
+  const handleVerifyOTPClick = async () => {
+    const otpString = otpCode.join('');
+    if (otpString.length !== 6) {
+      setOtpError('Vui lòng nhập đầy đủ 6 số OTP!');
+      return;
+    }
+    
+    setIsLoading(true);
+    setOtpError('');
+    
+    try {
+      const result = await onVerifyOTP(
+        pendingSignup.email,
+        otpString,
+        pendingSignup.username,
+        pendingSignup.password
+      );
+      
+      if (result.success) {
+        setView('home');
+        setPendingSignup(null);
+        setOtpCode(['', '', '', '', '', '']);
+        setOtpError('');
+      } else {
+        // OTP sai - cho phép nhập lại
+        setOtpError('Mã OTP không đúng! Vui lòng kiểm tra lại.');
+        setOtpCode(['', '', '', '', '', '']);
+        otpInputRefs.current[0]?.focus();
+      }
+    } catch (error) {
+      setOtpError(error.message || 'Có lỗi xảy ra! Vui lòng thử lại.');
+      setOtpCode(['', '', '', '', '', '']);
+      otpInputRefs.current[0]?.focus();
+    } finally {
+      setIsLoading(false);
+    }
+  };
+  
+  const handleResendOTPClick = async () => {
+    await onResendOTP(pendingSignup.email, pendingSignup.username);
+    setOtpCode(['', '', '', '', '', '']);
+    otpInputRefs.current[0]?.focus();
   };
 
   const handleCreate = () => {
@@ -179,54 +275,6 @@ function Landing({ onCreateProject, onJoinProject, onLogin, onSignup, onGoogleSi
     );
   }
 
-  // Show username setup if logged in but no profile
-  if (authUser && !userProfile) {
-    return (
-      <div className="landing">
-        <nav className="navbar">
-          <div className="nav-content">
-            <div className="logo-nav" onClick={() => setView('home')}>
-              <img src="/logo.jpg" alt="Code Net Logo" className="logo-image" />
-              <span className="logo-text">
-                <span className="logo-code">Code</span>
-                <span className="logo-net">Net</span>
-              </span>
-            </div>
-          </div>
-        </nav>
-
-        <div className="modal-container">
-          <div className="modal-box">
-            <h2>Chào mừng!</h2>
-            <p>Vui lòng chọn tên người dùng của bạn</p>
-            <input
-              type="text"
-              placeholder="Tên người dùng (VD: john_doe)"
-              value={username}
-              onChange={(e) => {
-                setUsername(e.target.value);
-                setUsernameError('');
-              }}
-              onKeyPress={(e) => e.key === 'Enter' && handleSetUsername()}
-              autoFocus
-            />
-            {usernameError && <p className="error-text">{usernameError}</p>}
-            <p className="hint-text">
-              • Tên người dùng là duy nhất trên hệ thống<br/>
-              • Chỉ chứa chữ cái, số và dấu gạch dưới<br/>
-              • Tối thiểu 3 ký tự
-            </p>
-            <div className="modal-actions">
-              <button className="btn-primary full-width" onClick={handleSetUsername}>
-                Tiếp tục <FiArrowRight />
-              </button>
-            </div>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
   // Project Code View
   if (view === 'projectCode') {
     return (
@@ -299,13 +347,35 @@ function Landing({ onCreateProject, onJoinProject, onLogin, onSignup, onGoogleSi
               onChange={(e) => setEmail(e.target.value)}
               autoFocus
             />
-            <input
-              type="password"
-              placeholder="Mật khẩu..."
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              onKeyPress={(e) => e.key === 'Enter' && handleLogin()}
-            />
+            <div style={{ position: 'relative' }}>
+              <input
+                type={showPassword ? "text" : "password"}
+                placeholder="Mật khẩu..."
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                onKeyPress={(e) => e.key === 'Enter' && handleLogin()}
+                style={{ paddingRight: '3rem' }}
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword(!showPassword)}
+                style={{
+                  position: 'absolute',
+                  right: '1rem',
+                  top: '50%',
+                  transform: 'translateY(-50%)',
+                  background: 'none',
+                  border: 'none',
+                  color: '#4ECDC4',
+                  cursor: 'pointer',
+                  padding: '0.5rem',
+                  display: 'flex',
+                  alignItems: 'center'
+                }}
+              >
+                {showPassword ? <FiEyeOff size={20} /> : <FiEye size={20} />}
+              </button>
+            </div>
             <div className="modal-actions">
               <button className="btn-secondary" onClick={() => setView('home')}>
                 Quay lại
@@ -367,19 +437,77 @@ function Landing({ onCreateProject, onJoinProject, onLogin, onSignup, onGoogleSi
               value={email}
               onChange={(e) => setEmail(e.target.value)}
             />
-            <input
-              type="password"
-              placeholder="Mật khẩu..."
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              onKeyPress={(e) => e.key === 'Enter' && handleSignup()}
-            />
+            <div style={{ position: 'relative' }}>
+              <input
+                type={showPassword ? "text" : "password"}
+                placeholder="Mật khẩu (tối thiểu 6 ký tự)..."
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                style={{ paddingRight: '3rem' }}
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword(!showPassword)}
+                style={{
+                  position: 'absolute',
+                  right: '1rem',
+                  top: '50%',
+                  transform: 'translateY(-50%)',
+                  background: 'none',
+                  border: 'none',
+                  color: '#4ECDC4',
+                  cursor: 'pointer',
+                  padding: '0.5rem',
+                  display: 'flex',
+                  alignItems: 'center'
+                }}
+              >
+                {showPassword ? <FiEyeOff size={20} /> : <FiEye size={20} />}
+              </button>
+            </div>
+            <div style={{ position: 'relative' }}>
+              <input
+                type={showConfirmPassword ? "text" : "password"}
+                placeholder="Xác nhận mật khẩu..."
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+                onKeyPress={(e) => e.key === 'Enter' && handleSignup()}
+                style={{ paddingRight: '3rem' }}
+              />
+              <button
+                type="button"
+                onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                style={{
+                  position: 'absolute',
+                  right: '1rem',
+                  top: '50%',
+                  transform: 'translateY(-50%)',
+                  background: 'none',
+                  border: 'none',
+                  color: '#4ECDC4',
+                  cursor: 'pointer',
+                  padding: '0.5rem',
+                  display: 'flex',
+                  alignItems: 'center'
+                }}
+              >
+                {showConfirmPassword ? <FiEyeOff size={20} /> : <FiEye size={20} />}
+              </button>
+            </div>
             <div className="modal-actions">
-              <button className="btn-secondary" onClick={() => setView('home')}>
+              <button className="btn-secondary" onClick={() => setView('home')} disabled={isLoading}>
                 Quay lại
               </button>
-              <button className="btn-primary" onClick={handleSignup}>
-                Đăng ký <FiArrowRight />
+              <button className="btn-primary" onClick={handleSignup} disabled={isLoading}>
+                {isLoading ? (
+                  <>
+                    <span className="spinner"></span> Đang gửi...
+                  </>
+                ) : (
+                  <>
+                    Đăng ký <FiArrowRight />
+                  </>
+                )}
               </button>
             </div>
             
@@ -393,6 +521,158 @@ function Landing({ onCreateProject, onJoinProject, onLogin, onSignup, onGoogleSi
             
             <p className="switch-auth">
               Đã có tài khoản? <span onClick={() => setView('login')}>Đăng nhập</span>
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // OTP Verification View
+  if (view === 'otpVerification') {
+    return (
+      <div className="landing">
+        <nav className="navbar">
+          <div className="nav-content">
+            <div className="logo-nav">Code Net</div>
+            <div className="nav-actions">
+              <button className="btn-nav" onClick={() => {
+                setView('signup');
+                setOtpCode(['', '', '', '', '', '']);
+              }}>
+                Quay lại
+              </button>
+            </div>
+          </div>
+        </nav>
+
+        <div className="modal-container">
+          <div className="modal-box">
+            <div className="success-icon" style={{ background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', fontSize: '3rem' }}>
+              🔐
+            </div>
+            <h2>Xác Minh OTP</h2>
+            <p style={{ marginBottom: '1rem' }}>
+              Mã OTP đã được gửi đến:<br/>
+              <strong style={{ color: '#4ECDC4' }}>{pendingSignup?.email}</strong>
+            </p>
+            <p style={{ fontSize: '0.9rem', color: '#aaa', marginBottom: '1.5rem' }}>
+              Nhập mã OTP (6 số) để xác minh tài khoản
+            </p>
+            
+            {/* OTP Input Boxes */}
+            <div style={{ 
+              display: 'flex', 
+              gap: '0.5rem', 
+              justifyContent: 'center',
+              marginBottom: '1rem'
+            }}>
+              {otpCode.map((digit, index) => (
+                <input
+                  key={index}
+                  ref={el => otpInputRefs.current[index] = el}
+                  type="text"
+                  maxLength="1"
+                  value={digit}
+                  onChange={(e) => {
+                    const value = e.target.value.replace(/[^0-9]/g, '');
+                    if (value) {
+                      const newOtp = [...otpCode];
+                      newOtp[index] = value;
+                      setOtpCode(newOtp);
+                      setOtpError('');
+                      if (index < 5) {
+                        otpInputRefs.current[index + 1]?.focus();
+                      }
+                    }
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Backspace' && !otpCode[index] && index > 0) {
+                      otpInputRefs.current[index - 1]?.focus();
+                    }
+                    if (e.key === 'Enter' && otpCode.every(d => d)) {
+                      handleVerifyOTPClick();
+                    }
+                  }}
+                  onPaste={(e) => {
+                    e.preventDefault();
+                    const pastedData = e.clipboardData.getData('text').replace(/[^0-9]/g, '').slice(0, 6);
+                    const newOtp = pastedData.split('');
+                    while (newOtp.length < 6) newOtp.push('');
+                    setOtpCode(newOtp);
+                    setOtpError('');
+                    otpInputRefs.current[Math.min(pastedData.length, 5)]?.focus();
+                  }}
+                  style={{
+                    width: '3rem',
+                    height: '3.5rem',
+                    fontSize: '1.5rem',
+                    textAlign: 'center',
+                    border: `2px solid ${otpError ? '#e74c3c' : '#333'}`,
+                    borderRadius: '8px',
+                    background: '#1a1a1a',
+                    color: '#fff',
+                    outline: 'none',
+                    transition: 'all 0.2s'
+                  }}
+                  onFocus={(e) => {
+                    e.target.style.borderColor = otpError ? '#e74c3c' : '#4ECDC4';
+                    e.target.style.boxShadow = `0 0 0 3px rgba(${otpError ? '231, 76, 60' : '78, 205, 196'}, 0.1)`;
+                  }}
+                  onBlur={(e) => {
+                    e.target.style.borderColor = otpError ? '#e74c3c' : '#333';
+                    e.target.style.boxShadow = 'none';
+                  }}
+                  autoFocus={index === 0}
+                  disabled={isLoading}
+                />
+              ))}
+            </div>
+
+            {/* Error Message */}
+            {otpError && (
+              <p style={{ 
+                color: '#e74c3c', 
+                fontSize: '0.9rem', 
+                marginBottom: '1rem',
+                textAlign: 'center',
+                fontWeight: '500'
+              }}>
+                ❌ {otpError}
+              </p>
+            )}
+
+            <div className="modal-actions" style={{ flexDirection: 'column', gap: '0.75rem' }}>
+              <button 
+                className="btn-primary full-width" 
+                onClick={handleVerifyOTPClick}
+                disabled={!otpCode.every(d => d) || isLoading}
+                style={{
+                  opacity: (otpCode.every(d => d) && !isLoading) ? 1 : 0.5,
+                  cursor: (otpCode.every(d => d) && !isLoading) ? 'pointer' : 'not-allowed'
+                }}
+              >
+                {isLoading ? (
+                  <>
+                    <span className="spinner"></span> Đang xác minh...
+                  </>
+                ) : (
+                  '✓ Xác Minh'
+                )}
+              </button>
+              <button 
+                className="btn-secondary full-width" 
+                onClick={handleResendOTPClick}
+                disabled={isLoading}
+              >
+                📨 Gửi lại mã OTP
+              </button>
+            </div>
+            
+            <p className="hint-text" style={{ marginTop: '1.5rem', fontSize: '0.85rem' }}>
+              💡 Mẹo: Mã OTP có hiệu lực trong 5 phút.<br/>
+              Kiểm tra email (kể cả thư mục Spam).<br/>
+              Có thể paste cả 6 số cùng lúc.
             </p>
           </div>
         </div>
@@ -536,6 +816,26 @@ function Landing({ onCreateProject, onJoinProject, onLogin, onSignup, onGoogleSi
                 <button className="btn-nav" onClick={() => setShowProjects(true)}>
                   <FiFolder /> Projects
                 </button>
+                
+                {/* Notification Bell */}
+                <NotificationBell 
+                  userId={authUser.uid}
+                  userProfile={userProfile}
+                  onProjectJoin={(projectId, projectName) => {
+                    // Join project from notification
+                    onJoinProject(userProfile.username, projectId, null, true, projectName);
+                  }}
+                />
+                
+                {/* Friends Button */}
+                <button 
+                  className="btn-nav btn-friends" 
+                  onClick={() => setShowFriendsList(true)}
+                  title="Bạn bè"
+                >
+                  <FiUsers />
+                </button>
+                
                 <div className="user-avatar-nav" title="Profile" onClick={() => window.openProfile && window.openProfile()}>
                   <img src={userProfile.photoURL} alt={userProfile.username} />
                   <span>
@@ -932,6 +1232,19 @@ function Landing({ onCreateProject, onJoinProject, onLogin, onSignup, onGoogleSi
             const displayName = userProfile ? userProfile.username : 'Guest';
             // Skip check when opening saved project, pass project name
             onJoinProject(displayName, code, savedRole, true, projectName);
+          }}
+        />
+      )}
+      
+      {/* Friends List Modal */}
+      {showFriendsList && authUser && userProfile && (
+        <FriendsList
+          userId={authUser.uid}
+          userProfile={userProfile}
+          onClose={() => setShowFriendsList(false)}
+          onSendMessage={(friendId) => {
+            console.log('Send message to:', friendId);
+            // TODO: Implement messaging
           }}
         />
       )}

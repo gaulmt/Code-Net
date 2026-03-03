@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { FiEdit2, FiCheck, FiX, FiMoreVertical, FiUserPlus } from 'react-icons/fi';
 import { updateUserRole, updateUserPermissions, transferLeadership } from '../socket';
 import InviteMembersModal from './InviteMembersModal';
@@ -12,7 +12,7 @@ const ROLES = {
   viewer: { label: 'Viewer', color: '#888', icon: '👁️' }
 };
 
-function UserPanel({ users, currentUser, roomId, userProfile, authUser }) {
+function UserPanel({ users, currentUser, roomId, userProfile, authUser, projectName }) {
   const [editingUserId, setEditingUserId] = useState(null);
   const [showPermissionMenu, setShowPermissionMenu] = useState(null);
   const [selectedRole, setSelectedRole] = useState('');
@@ -20,6 +20,18 @@ function UserPanel({ users, currentUser, roomId, userProfile, authUser }) {
   const [showInviteModal, setShowInviteModal] = useState(false);
 
   const isLeader = currentUser?.role === 'leader';
+
+  // Close menu when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (showPermissionMenu && !e.target.closest('.permission-menu-simple') && !e.target.closest('.btn-menu')) {
+        setShowPermissionMenu(null);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [showPermissionMenu]);
 
   const handleRoleChange = (userId, newRole) => {
     if (isLeader && userId !== currentUser.id) {
@@ -84,6 +96,11 @@ function UserPanel({ users, currentUser, roomId, userProfile, authUser }) {
 
   const handleGoHome = () => {
     if (window.confirm('Bạn có muốn rời khỏi phòng và quay về trang chủ?')) {
+      // Clear project state from localStorage
+      localStorage.removeItem('currentProjectId');
+      localStorage.removeItem('currentProjectName');
+      localStorage.removeItem('currentUserData');
+      
       window.location.reload();
     }
   };
@@ -121,7 +138,7 @@ function UserPanel({ users, currentUser, roomId, userProfile, authUser }) {
         </div>
 
         {users.map((u) => (
-          <div key={u.id} className={`user-item ${u.id === currentUser?.id ? 'current-user' : ''}`}>
+          <div key={u.id} className={`user-item ${u.id === currentUser?.id ? 'current-user' : ''} ${showPermissionMenu === u.id ? 'menu-open' : ''}`}>
             <div className="user-main">
               {/* Use profile avatar if available, otherwise use color avatar */}
               {u.id === currentUser?.id && userProfile ? (
@@ -186,16 +203,9 @@ function UserPanel({ users, currentUser, roomId, userProfile, authUser }) {
                   )}
                 </div>
 
-                {/* Simplified Permission Menu */}
+                {/* Simplified Permission Menu - VSCode Style */}
                 {showPermissionMenu === u.id && (
                   <div className="permission-menu-simple">
-                    <div className="menu-header">
-                      <span>Quản lý: {u.name}</span>
-                      <button onClick={() => setShowPermissionMenu(null)}>
-                        <FiX />
-                      </button>
-                    </div>
-                    
                     <div className="role-grid">
                       {Object.entries(ROLES).map(([key, role]) => (
                         key !== 'leader' && (
@@ -209,6 +219,8 @@ function UserPanel({ users, currentUser, roomId, userProfile, authUser }) {
                         )
                       ))}
                     </div>
+
+                    <div className="menu-divider"></div>
 
                     <button
                       className="btn-transfer"
@@ -259,6 +271,8 @@ function UserPanel({ users, currentUser, roomId, userProfile, authUser }) {
         <InviteMembersModal
           roomId={roomId}
           userId={authUser.uid}
+          projectName={projectName}
+          userProfile={userProfile}
           onClose={() => setShowInviteModal(false)}
         />
       )}

@@ -1,0 +1,167 @@
+{
+  "rules": {
+    "otp_pending": {
+      "$email": {
+        ".read": true,
+        ".write": true
+      }
+    },
+    "usernames": {
+      ".read": true,
+      "$userId": {
+        ".write": "auth != null && (auth.uid == $userId || !data.exists())"
+      }
+    },
+    "users": {
+      "$userId": {
+        ".read": "auth != null",
+        ".write": "auth != null && auth.uid == $userId",
+        "profile": {
+          ".read": "auth != null",
+          ".write": "auth != null && auth.uid == $userId"
+        },
+        "projects": {
+          ".read": "auth != null && auth.uid == $userId",
+          ".write": "auth != null && auth.uid == $userId"
+        },
+        "friends": {
+          "$friendId": {
+            ".read": "auth != null",
+            ".write": "auth != null"
+          }
+        },
+        "status": {
+          ".read": "auth != null",
+          ".write": "auth != null && auth.uid == $userId"
+        },
+        "notifications": {
+          "$notificationId": {
+            ".read": "auth != null && auth.uid == $userId",
+            ".write": "auth != null"
+          }
+        }
+      }
+    },
+    "friendRequests": {
+      "$requestId": {
+        ".read": "auth != null",
+        ".write": "auth != null",
+        ".validate": "newData.hasChildren(['from', 'to', 'status', 'createdAt'])"
+      }
+    },
+    "projectInvites": {
+      "$inviteId": {
+        ".read": "auth != null",
+        ".write": "auth != null",
+        ".validate": "newData.hasChildren(['projectId', 'from', 'to', 'status', 'createdAt'])"
+      }
+    },
+    "projects": {
+      "$projectId": {
+        ".read": true,
+        ".write": true,
+        "metadata": {
+          ".read": true,
+          ".write": true
+        },
+        "members": {
+          "$memberId": {
+            ".read": true,
+            ".write": true
+          }
+        },
+        "collaborators": {
+          "$collaboratorId": {
+            ".read": true,
+            ".write": true
+          }
+        }
+      }
+    },
+    "documents": {
+      "$documentId": {
+        ".read": true,
+        ".write": true,
+        "users": {
+          "$userId": {
+            ".read": true,
+            ".write": true
+          }
+        },
+        "content": {
+          ".read": true,
+          ".write": true
+        },
+        "chat": {
+          "$messageId": {
+            ".read": true,
+            ".write": true
+          }
+        },
+        "cursors": {
+          "$userId": {
+            ".read": true,
+            ".write": true
+          }
+        },
+        "files": {
+          "$fileId": {
+            ".read": true,
+            ".write": true
+          }
+        }
+      }
+    },
+    "conversations": {
+      "$conversationId": {
+        ".read": "auth != null",
+        ".write": "auth != null",
+        "messages": {
+          "$messageId": {
+            ".read": "auth != null",
+            ".write": "auth != null"
+          }
+        },
+        "participants": {
+          "$userId": {
+            ".read": "auth != null",
+            ".write": "auth != null"
+          }
+        }
+      }
+    },
+    "globalChat": {
+      "messages": {
+        "$messageId": {
+          ".read": "auth != null",
+          ".write": "auth != null"
+        }
+      }
+    },
+    "community": {
+      "posts": {
+        ".read": true,
+        "$postId": {
+          ".read": true,
+          ".write": "auth != null"
+        }
+      },
+      "following": {
+        "$userId": {
+          "$followingId": {
+            ".read": "auth != null",
+            ".write": "auth != null && auth.uid == $userId"
+          }
+        }
+      },
+      "followers": {
+        "$userId": {
+          "$followerId": {
+            ".read": "auth != null",
+            ".write": "auth != null"
+          }
+        }
+      }
+    }
+  }
+}
